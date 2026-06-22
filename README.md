@@ -84,10 +84,8 @@ Once both servers are running, open your web browser and go to `http://localhost
 
 | Role | Username | Password |
 |------|----------|----------|
-| **Admin** | `admin1` | `admin123` |
-| **Officer** | `officer1` | `password` |
-| **Operator** | `operator1` | `password` |
-| **Auditor** | `auditor1` | `password` |
+| **Admin** | `admin1 | `admin123` |
+| **Officer** | `officer1` | `officer123` |
 
 *(Note: Auditor view is read-only and features screen-capture protections).*
 
@@ -96,7 +94,7 @@ Once both servers are running, open your web browser and go to `http://localhost
 ## ✅ Verification & Daily Usage
 
 To verify the installation:
-- Login as `admin1` to view the Dashboard and ensure folders exist.
+- Login as `admin` to view the Dashboard and ensure folders exist.
 - Login as `officer1` and try logging a new Inward document.
 - Inward documents and Outward drafts will automatically create subfolders in the `Inward/` and `Drafts/` directories inside the project root.
 
