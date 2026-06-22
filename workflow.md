@@ -1,7 +1,5 @@
 # IODMS – V-Model Workflow Guide
-## Who this is for: First-year Aviation intern, non-CSE background, learning as you go
 ## Stack: React (Material UI) + FastAPI + PostgreSQL
-## Tooling: Claude Code or Google Antigravity — agentic tools that read and edit your project folder directly, instead of you copy-pasting files into a chat window
 
 ---
 
@@ -62,31 +60,6 @@ IODMS/
 ├── backend/                       ← created in Step 3
 └── frontend/                      ← created in Step 3
 ```
-
-**`CLAUDE.md`** (Claude Code only — Antigravity doesn't need this file, see note below) is a short instruction file Claude Code loads automatically every time you start it in this folder. Put something like this in it:
-
-```markdown
-# IODMS Project Instructions
-
-Before doing anything, read docs/IODMS_requirements_context.md.
-If docs/technical_design.md exists, read that too — it is the current
-schema + folder structure and supersedes anything older in docs/.
-
-Rules for all code you write:
-- Add a comment above every function naming the FR ID it implements
-  (e.g. "# FR-016: ...")
-- Keep comments simple enough for a non-CSE beginner to understand
-- I am a first-year non-CSE intern learning as I go — explain anything complex
-```
-
-This replaces the old "paste the context file every session" rule — you only write this once.
-
-**If you're using Antigravity instead:** open the `IODMS/` folder as your Antigravity project. Antigravity doesn't use a `CLAUDE.md` file, but its agents read whatever is in the opened project folder, and its knowledge base saves useful context across tasks automatically. Just make sure `docs/IODMS_requirements_context.md` exists before you start Step 1, and mention it by name in your first prompt of each session (e.g. "Read docs/IODMS_requirements_context.md first").
-
-**If you're using both:** keep the repo structure identical — it works for either tool, you're just choosing which agent acts on it per session.
-
----
-
 ## Phase 2A — Standalone PC Design
 
 **What standalone means:** The server and the user are on the same computer. No network, no other PCs. This keeps things simple for the first build. You are just making sure the software works correctly before worrying about multiple users on a network.
