@@ -1,0 +1,113 @@
+/* Global CSS Styling for IODMS */
+
+/* Custom scrollbars for a premium feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F8FAFC;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* Background animation */
+body {
+  background: #F8FAFC;
+  min-height: 100vh;
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
+  color: #111827;
+}
+
+/* Glassmorphic card utility styling (adapted for light mode) */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid #D1D5DB;
+  border-radius: 12px;
+}
+
+/* FR-004: Disable text selection in Auditor View */
+.auditor-no-select {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* FR-005: Watermark "CONFIDENTIAL – VIEW ONLY" across the screen */
+.auditor-watermark {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  opacity: 0.10;
+}
+
+.auditor-watermark-text {
+  font-size: 5.5rem;
+  font-weight: 800;
+  color: #E53935;
+  transform: rotate(-35deg);
+  white-space: nowrap;
+  letter-spacing: 0.5rem;
+  text-transform: uppercase;
+  font-family: 'Outfit', sans-serif;
+}
+
+/* File upload dropzone styling */
+.dropzone-container {
+  border: 2px dashed #D1D5DB;
+  border-radius: 8px;
+  background: #F8FAFC;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.dropzone-container:hover {
+  border-color: #1E5AA8;
+  background: #EFF6FF;
+}
+
+.dropzone-active {
+  border-color: #1E5AA8;
+  background: #DBEAFE;
+}
+
+/* Custom Table Styling */
+.MuiTableHead-root .MuiTableCell-root {
+  background-color: #0B2545 !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+
+.MuiTableRow-root:hover {
+  background-color: #EFF6FF !important;
+}
+
+.MuiTableRow-root.Mui-selected, .MuiTableRow-root.Mui-selected:hover {
+  background-color: #DBEAFE !important;
+}
+
+.row-pending-delete {
+  background-color: #FEF2F2 !important;
+  border-left: 3px solid #B91C1C !important;
+}
