@@ -80,7 +80,11 @@ The frontend is built with React, Vite, and Material-UI.
 
 ## 🔑 Login Credentials
 
-Once both servers are running, open your web browser and go to `http://localhost:3000`. You can log in using the following seeded accounts:
+Once your system is running, open your web browser and go to:
+- **For Local Development (Vite):** `http://localhost:3000`
+- **For Docker Deployment:** `http://localhost` (or the server's IP address)
+
+You can log in using the following seeded accounts:
 
 | Role | Username | Password |
 |------|----------|----------|
