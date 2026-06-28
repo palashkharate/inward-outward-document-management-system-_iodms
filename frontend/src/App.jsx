@@ -4,8 +4,9 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import axios from 'axios';
 
-// Configure global Axios base URL for development backend
-axios.defaults.baseURL = 'http://localhost:8000';
+// In production (Docker): Nginx proxies /api to the backend, so no baseURL needed.
+// In development: Vite proxy (vite.config.js) handles /api forwarding to localhost:8000.
+// So we always use relative URLs like '/api/inward/register' — no hardcoded localhost.
 
 import {
   Box,
@@ -74,7 +75,7 @@ const lightTheme = createTheme({
     divider: '#D1D5DB', // Aircraft Silver
   },
   typography: {
-    fontFamily: "'Outfit', sans-serif",
+    fontFamily: "'Outfit', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     h5: {
       fontWeight: 600,
     },

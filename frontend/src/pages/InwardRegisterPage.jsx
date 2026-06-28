@@ -122,7 +122,7 @@ function InwardRow({ row, onAction, user }) {
                     variant="contained"
                     color="primary"
                     startIcon={<VisibilityIcon />}
-                    href={`http://localhost:8000/api/inward/view-file?path=${row.attachment_path}`}
+                    href={`/api/inward/view-file?path=${row.attachment_path}`}
                     target="_blank"
                   >
                     View File

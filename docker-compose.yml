@@ -1,0 +1,98 @@
+# IODMS Docker Compose Configuration
+# =====================================
+# This file defines 3 services (containers) that work together:
+#   1. db       - PostgreSQL database
+#   2. backend  - Python FastAPI server
+#   3. frontend - Nginx serving the React app
+#
+# To start everything: docker-compose up -d
+# To stop everything:  docker-compose down
+# To view logs:        docker-compose logs
+
+services:
+
+  # --- Container 1: PostgreSQL Database ---
+  # This runs the official PostgreSQL 15 image.
+  # The database files are stored in a Docker volume so they survive restarts.
+  db:
+    image: postgres:15
+    container_name: iodms-db
+    environment:
+      # These set the database username, password, and database name
+      # when the container starts for the first time.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: iodms_db
+    volumes:
+      # Map the database files to a named volume (persistent storage)
+      # Even if you delete and recreate this container, your data stays safe.
+      - iodms_db_data:/var/lib/postgresql/data
+    ports:
+      # Expose PostgreSQL on port 5432 (only needed for debugging, optional)
+      - "5432:5432"
+    restart: always
+    # Health check: Docker will keep checking if PostgreSQL is ready
+    # before starting the backend container
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Container 2: Python FastAPI Backend ---
+  # This builds from backend/Dockerfile and runs the FastAPI server.
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: iodms-backend:latest
+    container_name: iodms-backend
+    environment:
+      # Override the DATABASE_URL to point to the 'db' container above.
+      # Inside Docker's private network, containers refer to each other by service name.
+      # So "db" here is the hostname of Container 1.
+      DATABASE_URL: "postgresql+psycopg://postgres:postgres@db:5432/iodms_db"
+      # Set the IODMS data path to the mounted volume inside the container
+      IODMS_ROOT_PATH: "/data/IODMS_DATA"
+    volumes:
+      # Map uploaded documents to a named volume (persistent storage)
+      # All PDFs, scanned images, and Word docs are saved here.
+      - iodms_uploads:/data/IODMS_DATA
+      # Map the settings.json to a named volume so config persists
+      - iodms_settings:/app/settings_data
+    ports:
+      # Expose backend on port 8000 (mainly for debugging, frontend proxies to it)
+      - "8000:8000"
+    depends_on:
+      # Wait for the database to be healthy before starting the backend
+      db:
+        condition: service_healthy
+    restart: always
+
+  # --- Container 3: Nginx Frontend ---
+  # This builds from frontend/Dockerfile. It serves the React app
+  # and proxies /api requests to the backend.
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: iodms-frontend:latest
+    container_name: iodms-frontend
+    ports:
+      # Map port 80 on the host to port 80 in the container.
+      # Officers will access the website at http://<server-ip> (port 80 is default for HTTP)
+      - "80:80"
+    depends_on:
+      # Start frontend only after backend is running
+      - backend
+    restart: always
+
+# Named volumes for persistent data storage
+# These are managed by Docker and stored on the host machine's disk.
+volumes:
+  iodms_db_data:
+    # Stores PostgreSQL database files
+  iodms_uploads:
+    # Stores all uploaded/scanned documents (Inward, Outward, Drafts)
+  iodms_settings:
+    # Stores settings.json (IODMS root path config, cutover date)

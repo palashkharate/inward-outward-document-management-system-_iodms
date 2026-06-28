@@ -104,7 +104,7 @@ function OutwardRow({ row, onAction, user }) {
                   variant="contained"
                   color="primary"
                   startIcon={<VisibilityIcon />}
-                  href={`http://localhost:8000/api/outward/view-document?path=${row.document_path}`}
+                  href={`/api/outward/view-document?path=${row.document_path}`}
                   target="_blank"
                 >
                   Open Document

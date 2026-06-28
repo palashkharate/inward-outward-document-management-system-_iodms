@@ -25,8 +25,11 @@ def get_iodms_settings():
     
     This function implements FR-140 by reading the current configured path.
     """
+    # FR-140: Check for environment variable first (used in Docker), then fall back to relative path
+    default_root = os.getenv("IODMS_ROOT_PATH",
+                             os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "IODMS_DATA")))
     default_settings = {
-        "iodms_root_path": os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "IODMS_DATA")),
+        "iodms_root_path": default_root,
         "cutover_override_date": None  # FR-141
     }
     if not os.path.exists(SETTINGS_FILE):

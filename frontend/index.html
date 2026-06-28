@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HAL IODMS - Inward/Outward Document Management System</title>
-    <!-- Import beautiful Google Font for the visual design -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@1,400;1,700&display=swap" rel="stylesheet" />
+    <!-- Font Note: Google Fonts CDN links were removed because the company
+         network is air-gapped (no internet). The app uses system fonts as fallback.
+         To use the Outfit font offline, download the .woff2 files and place them
+         in the public/fonts/ folder, then uncomment the @font-face below. -->
     <style>
       /* Simple reset style to prevent margins */
       html, body, #root {
@@ -15,7 +15,7 @@
         padding: 0;
         width: 100%;
         height: 100%;
-        font-family: 'Outfit', sans-serif;
+        font-family: 'Outfit', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         background-color: #0b0f19;
         color: #e2e8f0;
       }

@@ -306,7 +306,7 @@ export default function DraftsDispatchPage() {
         </DialogContent>
         <DialogActions>
           <Button
-            href={`http://localhost:8000/api/outward/view-document?path=${activeDraft?.file_path}`}
+            href={`/api/outward/view-document?path=${activeDraft?.file_path}`}
             target="_blank"
             variant="outlined"
           >

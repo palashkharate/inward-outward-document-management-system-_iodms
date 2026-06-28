@@ -14,8 +14,8 @@ import {
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useAuth } from '../App.jsx';
 
-// Configure axios base URL
-axios.defaults.baseURL = 'http://localhost:8000';
+// No hardcoded baseURL needed — Nginx proxies /api to backend in production,
+// and Vite proxy handles it in development.
 
 export default function LoginPage() {
   const { user, login } = useAuth();
