@@ -28,6 +28,7 @@ import ClearIcon from '@mui/icons-material/Clear';
 import SaveIcon from '@mui/icons-material/Save';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useAuth } from '../App.jsx';
 
 export default function ComposeOutwardPage() {
@@ -55,6 +56,7 @@ export default function ComposeOutwardPage() {
   const [ccList, setCcList] = useState([]); // selected CC address IDs
   const [linkedDocuments, setLinkedDocuments] = useState([]);
   const [availableDocuments, setAvailableDocuments] = useState([]);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
 
   // Master Lists (fetched from API)
   const [usersList, setUsersList] = useState([]);
@@ -70,6 +72,7 @@ export default function ComposeOutwardPage() {
   const [errorMsg, setErrorMsg] = useState('');
   // FR-055: Track whether outward number has been explicitly reserved
   const [isReserved, setIsReserved] = useState(false);
+  const autosaveKey = `compose_outward_draft_${user?.user_id || 'guest'}`;
 
   // Fetch initial master data
   useEffect(() => {
@@ -95,8 +98,9 @@ export default function ComposeOutwardPage() {
            setTemplateType(templatesRes.data[0].id.toString());
         }
 
-        // Pre-select first folder if available
-        if (foldersRes.data.length > 0 && !isModifyMode) {
+        // Pre-select first folder only when the form was not restored from tab-safe autosave.
+        const hasSavedDraft = Boolean(sessionStorage.getItem(autosaveKey));
+        if (foldersRes.data.length > 0 && !isModifyMode && !hasSavedDraft) {
           const first = foldersRes.data[0];
           setFolderId(first.folder_id);
           setFolderName(first.folder_name);
@@ -109,6 +113,75 @@ export default function ComposeOutwardPage() {
     };
     fetchData();
   }, [isModifyMode]);
+
+  useEffect(() => {
+    if (isModifyMode) return;
+    const saved = sessionStorage.getItem(autosaveKey);
+    if (!saved) return;
+    try {
+      const data = JSON.parse(saved);
+      setTargetYearVal(data.targetYearVal ?? new Date().getFullYear() - 1);
+      setOutNo(data.outNo || '');
+      setSubject(data.subject || '');
+      setPreparedBy(data.preparedBy || user?.user_id || '');
+      setDateVal(data.dateVal || new Date().toISOString().split('T')[0]);
+      setFolderId(data.folderId || '');
+      setFolderName(data.folderName || '');
+      setTemplateType(data.templateType || '');
+      setAddressGroup(data.addressGroup || '');
+      setAddressTo(data.addressTo || '');
+      setRemarks(data.remarks || '');
+      setCcList(data.ccList || []);
+      setLinkedDocuments(data.linkedDocuments || []);
+      setIsReserved(Boolean(data.isReserved));
+    } catch (e) {
+      sessionStorage.removeItem(autosaveKey);
+    }
+  }, [autosaveKey, isModifyMode, user?.user_id]);
+
+  useEffect(() => {
+    if (isModifyMode) return;
+    const hasTypedData = Boolean(
+      outNo || subject || remarks || addressGroup || addressTo || ccList.length || linkedDocuments.length
+    );
+    if (!hasTypedData) {
+      sessionStorage.removeItem(autosaveKey);
+      return;
+    }
+    sessionStorage.setItem(autosaveKey, JSON.stringify({
+      targetYearVal,
+      outNo,
+      subject,
+      preparedBy,
+      dateVal,
+      folderId,
+      folderName,
+      templateType,
+      addressGroup,
+      addressTo,
+      remarks,
+      ccList,
+      linkedDocuments,
+      isReserved
+    }));
+  }, [
+    autosaveKey,
+    isModifyMode,
+    targetYearVal,
+    outNo,
+    subject,
+    preparedBy,
+    dateVal,
+    folderId,
+    folderName,
+    templateType,
+    addressGroup,
+    addressTo,
+    remarks,
+    ccList,
+    linkedDocuments,
+    isReserved
+  ]);
 
   // If in Modify mode, prefill details from outward register
   useEffect(() => {
@@ -192,8 +265,6 @@ export default function ComposeOutwardPage() {
     const found = folderTypes.find(f => f.folder_id === id);
     if (found) {
       setFolderName(found.folder_name);
-      setOutNo('');
-      setIsReserved(false);
     }
   };
 
@@ -202,8 +273,6 @@ export default function ComposeOutwardPage() {
     const found = folderTypes.find(f => f.folder_name === name);
     if (found) {
       setFolderId(found.folder_id);
-      setOutNo('');
-      setIsReserved(false);
     }
   };
 
@@ -216,10 +285,12 @@ export default function ComposeOutwardPage() {
     setAddressTo('');
     setCcList([]);
     setLinkedDocuments([]);
+    setAttachmentFiles([]);
     setSuccessMsg('');
     setErrorMsg('');
     setIsReserved(false);
     setOutNo('');
+    sessionStorage.removeItem(autosaveKey);
     if (folderTypes.length > 0) {
       setFolderId(folderTypes[0].folder_id);
       setFolderName(folderTypes[0].folder_name);
@@ -301,6 +372,13 @@ export default function ComposeOutwardPage() {
       } else {
         // FR-042: Save Draft
         const response = await axios.post('/api/outward/draft', payload);
+        if (attachmentFiles.length > 0) {
+          const fileData = new FormData();
+          attachmentFiles.forEach(file => fileData.append('files', file));
+          await axios.post(`/api/outward/drafts/${response.data.draft_id}/attachments`, fileData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+        }
         setSuccessMsg(`Draft document for Outward No. ${response.data.outward_no} generated successfully.`);
         // Reset form after successful save (FR-043)
         handleNew();
@@ -633,6 +711,49 @@ export default function ComposeOutwardPage() {
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
               />
+            </Grid>
+
+            {/* Supporting Uploads (FR-170b) */}
+            <Grid item xs={12}>
+              <Box sx={{ border: '1px solid #E8EAED', borderRadius: 2, p: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 1.5 }}>
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Supporting Files
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Attach PDF, PPT, DOC, XLS, or image files to this draft.
+                    </Typography>
+                  </Box>
+                  <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
+                    Add Files
+                    <input
+                      type="file"
+                      hidden
+                      multiple
+                      accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                      onChange={(e) => setAttachmentFiles([...attachmentFiles, ...Array.from(e.target.files || [])])}
+                    />
+                  </Button>
+                </Box>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {attachmentFiles.length === 0 ? (
+                    <Typography variant="caption" color="text.secondary">
+                      No supporting files selected.
+                    </Typography>
+                  ) : (
+                    attachmentFiles.map((file, idx) => (
+                      <Chip
+                        key={`${file.name}-${idx}`}
+                        label={`${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`}
+                        onDelete={() => setAttachmentFiles(attachmentFiles.filter((_, i) => i !== idx))}
+                        color="secondary"
+                        variant="outlined"
+                      />
+                    ))
+                  )}
+                </Box>
+              </Box>
             </Grid>
 
             {/* Save Buttons (FR-042 or FR-044) */}

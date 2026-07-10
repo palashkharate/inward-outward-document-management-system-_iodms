@@ -135,14 +135,17 @@ def search_documents(query: str, limit: int = 20, db: Session = Depends(get_db))
             (func.lower(models.InwardRegister.inward_no).contains(q)) |
             (func.lower(models.InwardRegister.subject).contains(q)) |
             (func.lower(models.InwardRegister.received_from).contains(q))
-        ).order_by(models.InwardRegister.created_on.desc()).limit(limit).all()
+        ).order_by(models.InwardRegister.created_at.desc()).limit(limit).all()
     else:
-        inward_records = db.query(models.InwardRegister).order_by(models.InwardRegister.created_on.desc()).limit(limit).all()
+        inward_records = db.query(models.InwardRegister).order_by(models.InwardRegister.created_at.desc()).limit(limit).all()
 
     for ir in inward_records:
         results.append({
             "id": f"inward:{ir.folder_id}:{ir.year}:{ir.inward_no}",
             "type": "INWARD",
+            "subject": ir.subject,
+            "folder_name": ir.folder_id,
+            "date": ir.receiving_date.isoformat() if ir.receiving_date else "",
             "title": ir.subject,
             "label": f"INWARD - {ir.inward_no} - {ir.subject} (From: {ir.received_from})"
         })
@@ -151,18 +154,26 @@ def search_documents(query: str, limit: int = 20, db: Session = Depends(get_db))
     if q:
         outward_records = db.query(models.OutwardRegister).filter(
             (func.lower(models.OutwardRegister.outward_no).contains(q)) |
-            (func.lower(models.OutwardRegister.subject).contains(q)) |
-            (func.lower(models.OutwardRegister.sent_to).contains(q))
+            (func.lower(models.OutwardRegister.subject).contains(q))
         ).order_by(models.OutwardRegister.created_at.desc()).limit(limit).all()
     else:
         outward_records = db.query(models.OutwardRegister).order_by(models.OutwardRegister.created_at.desc()).limit(limit).all()
 
     for or_rec in outward_records:
+        address_names = []
+        for address_id in or_rec.address_to or []:
+            address = db.query(models.AddressBook).filter(models.AddressBook.address_id == address_id).first()
+            if address:
+                address_names.append(address.name)
+        address_label = ", ".join(address_names) if address_names else "No recipient"
         results.append({
             "id": f"outward:{or_rec.folder_id}:{or_rec.year}:{or_rec.outward_no}",
             "type": "OUTWARD",
+            "subject": or_rec.subject,
+            "folder_name": or_rec.folder_id,
+            "date": or_rec.issuing_date.isoformat() if or_rec.issuing_date else "",
             "title": or_rec.subject,
-            "label": f"OUTWARD - {or_rec.outward_no} - {or_rec.subject} (To: {or_rec.sent_to})"
+            "label": f"OUTWARD - {or_rec.outward_no} - {or_rec.subject} (To: {address_label})"
         })
 
     # Sort results to put exact matches higher, and limit the total list
@@ -203,7 +214,11 @@ def get_network_graph(doc_type: str, folder_id: str, year: int, doc_no: str, db:
             label = f"Inward {record.inward_no}"
         else:
             title = record.subject
-            sender = f"To: {record.sent_to}" if hasattr(record, 'sent_to') else "Outward"
+            recipient = None
+            if record.address_to:
+                address = db.query(models.AddressBook).filter(models.AddressBook.address_id == record.address_to[0]).first()
+                recipient = address.name if address else record.address_to[0]
+            sender = f"To: {recipient}" if recipient else "Outward"
             label = f"Outward {record.outward_no}"
             
         nodes.append({

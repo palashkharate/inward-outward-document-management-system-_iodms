@@ -24,6 +24,7 @@ import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
 import DescriptionIcon from '@mui/icons-material/Description';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import CelebrationIcon from '@mui/icons-material/Celebration';
+import CakeIcon from '@mui/icons-material/Cake';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
 import {
@@ -113,17 +114,16 @@ export default function DashboardPage() {
           )}
         </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
-           {birthdays.length > 0 && (
-             <Button 
-               variant="text" 
-               color="secondary" 
-               startIcon={<CelebrationIcon />} 
-               onClick={() => setShowBirthdayOverlay(true)} 
-               sx={{ borderRadius: 2 }}
-             >
-               Birthdays Today!
-             </Button>
-           )}
+           {/* FR-021: Keep the birthday control visible so users can reopen the greeting. */}
+           <Button
+             variant="text"
+             color="secondary"
+             startIcon={<CelebrationIcon />}
+             onClick={() => setShowBirthdayOverlay(true)}
+             sx={{ borderRadius: 2 }}
+           >
+             Birthday
+           </Button>
            <Button variant="contained" startIcon={<InputIcon />} onClick={() => navigate('/log-inward')} sx={{ borderRadius: 2 }}>
              Log Inward
            </Button>
@@ -153,16 +153,22 @@ export default function DashboardPage() {
           <CloseIcon sx={{ fontSize: 32 }} />
         </IconButton>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', width: '100%', p: 3, background: 'linear-gradient(135deg, #E8F0FE 0%, #FCE8E6 50%, #E6F4EA 100%)' }}>
-          <Box sx={{ mb: 3 }}><Typography sx={{ fontSize: 100 }}>🎂</Typography></Box>
+          <Box sx={{ mb: 3 }}>
+            <CakeIcon sx={{ fontSize: 100, color: '#EA4335' }} />
+          </Box>
           <Typography variant="h5" sx={{ color: '#202124', letterSpacing: 1, fontWeight: 700, textTransform: 'uppercase', mb: 3 }}>
-            Wishing a very Happy Birthday to:
+            {birthdays.length > 0 ? 'Wishing a very Happy Birthday to:' : 'No birthdays today'}
           </Typography>
           <Box sx={{ my: 4 }}>
-            {birthdays.map((name, idx) => (
+            {birthdays.length > 0 ? birthdays.map((name, idx) => (
               <Typography key={idx} variant="h1" sx={{ fontFamily: "'Outfit', sans-serif", fontWeight: 900, background: 'linear-gradient(45deg, #1A73E8, #EA4335, #FBBC04, #34A853)', backgroundSize: '300% 300%', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.3, fontSize: { xs: '3rem', sm: '4.5rem', md: '5.5rem' }, animation: 'gradient 5s ease infinite' }}>
                 {name}
               </Typography>
-            ))}
+            )) : (
+              <Typography variant="h3" sx={{ color: '#5F6368', fontWeight: 700 }}>
+                Check again tomorrow
+              </Typography>
+            )}
           </Box>
           <Button variant="contained" size="large" onClick={() => setShowBirthdayOverlay(false)} sx={{ mt: 4, px: 6, py: 1.5, borderRadius: 8, fontWeight: 600, boxShadow: '0 4px 14px rgba(26, 115, 232, 0.3)' }}>
             Thank You

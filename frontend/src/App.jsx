@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import axios from 'axios';
@@ -443,21 +443,32 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<LoginPage />} />
           <Route path="/auditor" element={<AuditorView />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/compose-outward" element={<ComposeOutwardPage />} />
-          <Route path="/compose-outward/modify/:folder_id/:year/:outward_no" element={<ComposeOutwardPage />} />
-          <Route path="/drafts" element={<DraftsDispatchPage />} />
-          <Route path="/log-inward" element={<LogInwardPage />} />
-          <Route path="/log-inward/modify/:folder_id/:year/:inward_no" element={<LogInwardPage />} />
-          <Route path="/inward-register" element={<InwardRegisterPage />} />
-          <Route path="/outward-register" element={<OutwardRegisterPage />} />
-          <Route path="/address-book" element={<AddressBookPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/profile" element={<MyProfilePage />} />
+          <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+          <Route path="/compose-outward" element={<RequireAuth><ComposeOutwardPage /></RequireAuth>} />
+          <Route path="/compose-outward/modify/:folder_id/:year/:outward_no" element={<RequireAuth><ComposeOutwardPage /></RequireAuth>} />
+          <Route path="/drafts" element={<RequireAuth><DraftsDispatchPage /></RequireAuth>} />
+          <Route path="/log-inward" element={<RequireAuth><LogInwardPage /></RequireAuth>} />
+          <Route path="/log-inward/modify/:folder_id/:year/:inward_no" element={<RequireAuth><LogInwardPage /></RequireAuth>} />
+          <Route path="/inward-register" element={<RequireAuth><InwardRegisterPage /></RequireAuth>} />
+          <Route path="/outward-register" element={<RequireAuth><OutwardRegisterPage /></RequireAuth>} />
+          <Route path="/address-book" element={<RequireAuth><AddressBookPage /></RequireAuth>} />
+          <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+          <Route path="/profile" element={<RequireAuth><MyProfilePage /></RequireAuth>} />
         </Routes>
       </Box>
     </Box>
   );
+}
+
+function RequireAuth({ children }) {
+  const { user } = useAuth();
+  const location = useLocation();
+
+  if (!user) {
+    return <Navigate to="/" replace state={{ from: location }} />;
+  }
+
+  return children;
 }
 
 export default function App() {

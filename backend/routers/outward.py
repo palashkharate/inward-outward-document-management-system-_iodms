@@ -61,20 +61,19 @@ def log_edit(db: Session, record_type: str, record_id: str, action: str, user_id
 
 # FR-055: Pre-assign and reserve Outward number
 def get_next_outward_no(folder_id: str, year: int, db: Session) -> str:
-    """Gets the next sequential Outward Number by looking at both outward_register and draft_files.
+    """Gets the next sequential Outward Number by looking at the whole outward year.
     
     Implements:
     - FR-055: Reserves the number immediately on creation to prevent concurrency conflicts.
+      Outward numbers are yearly global numbers; Folder ID only controls storage grouping.
     """
-    # 1. Fetch from outward_register
+    # 1. Fetch from outward_register for the whole year, not per Folder ID.
     register_nos = db.query(models.OutwardRegister.outward_no).filter(
-        models.OutwardRegister.folder_id == folder_id,
         models.OutwardRegister.year == year
     ).all()
     
-    # 2. Fetch from draft_files
+    # 2. Fetch from draft_files for the whole year, not per Folder ID.
     draft_nos = db.query(models.DraftFile.outward_no).filter(
-        models.DraftFile.folder_id == folder_id,
         models.DraftFile.year == year
     ).all()
     
@@ -116,7 +115,7 @@ def create_draft_document(filepath: str, data: dict, db: Session):
             shutil.copyfile(src_path, filepath)
             return
             
-    # Fallback to basic text format
+    # Fallback to a valid DOCX so the in-browser viewer can render it.
     address_str = ""
     if data.get("address_to"):
         addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == data["address_to"][0]).first()
@@ -131,9 +130,26 @@ def create_draft_document(filepath: str, data: dict, db: Session):
                 cc_names.append(addr.name)
     cc_str = ", ".join(cc_names)
 
-    content = f"""======================================================
-HAL AURDC, NASHIK - DESIGN & ENGINEERING ACTIVITY (DEA)
-======================================================
+    try:
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("HAL AURDC, NASHIK - DEA", level=1)
+        doc.add_paragraph(f"Outward Reference No: {data.get('outward_no')}")
+        doc.add_paragraph(f"Date: {data.get('issuing_date')}")
+        doc.add_paragraph(f"Folder ID: {data.get('folder_id')}")
+        doc.add_paragraph(f"Template ID: {data.get('template_type')}")
+        doc.add_paragraph(f"Prepared By: {data.get('prepared_by')}")
+        doc.add_heading("To", level=2)
+        doc.add_paragraph(address_str or "To be filled")
+        doc.add_paragraph(f"CC: {cc_str}")
+        doc.add_heading(f"Subject: {data.get('subject')}", level=2)
+        doc.add_paragraph("Dear Sir/Madam,")
+        doc.add_paragraph("[Place your letter body contents here...]")
+        doc.add_paragraph(f"Remarks: {data.get('remarks') or ''}")
+        doc.save(filepath)
+    except Exception:
+        content = f"""HAL AURDC, NASHIK - DESIGN & ENGINEERING ACTIVITY (DEA)
 Outward Reference No: {data.get('outward_no')}
 Date: {data.get('issuing_date')}
 Folder ID: {data.get('folder_id')}
@@ -147,19 +163,14 @@ CC: {cc_str}
 
 SUBJECT: {data.get('subject')}
 
-------------------------------------------------------
 Dear Sir/Madam,
-
-This is a draft document. You can modify the text below:
 
 [Place your letter body contents here...]
 
-------------------------------------------------------
 Remarks: {data.get('remarks')}
-======================================================
 """
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(content)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
 
 
 # --- Endpoints ---
@@ -176,40 +187,28 @@ def get_next_no(
     
     Implements:
     - FR-055: Pre-assigns the Outward No. when Compose Outward opens.
-    - FR-055: Prevents an officer from allocating a new number if they already have an undispatched draft.
+    - FR-055: Prevents duplicate reserved numbers while allowing officers to keep many saved drafts.
     - FR-144: Support target_year override for previous year entries.
     """
     user_id = current_user.get("user_id")
-    
-    # Check if the user already has a draft that is NOT pending deletion
-    existing_drafts = db.query(models.DraftFile).filter(models.DraftFile.actioned_by == user_id).all()
-    if existing_drafts:
-        # Check pending deletions
-        pending_deletes = db.query(models.PendingDeletion).filter(
-            models.PendingDeletion.source_table == "draft_files",
-            models.PendingDeletion.status == "Pending"
-        ).all()
-        pending_ids = []
-        for pd in pending_deletes:
-            try:
-                pending_ids.append(int(pd.record_id))
-            except ValueError:
-                pass
-        
-        has_active_draft = False
-        for draft in existing_drafts:
-            if draft.draft_id not in pending_ids:
-                has_active_draft = True
-                break
-                
-        if has_active_draft:
-            raise HTTPException(
-                status_code=400,
-                detail="You already have an active undispatched draft. You must dispatch or discard it before creating a new one."
-            )
-
     year = target_year if target_year else get_effective_year()
     
+    # Saved drafts do not block new drafts. Only an unfinished reservation is reused
+    # so refresh/reset clicks do not burn several outward numbers before Save Draft.
+    existing_reserved = db.query(models.DraftFile).filter(
+        models.DraftFile.actioned_by == user_id,
+        models.DraftFile.file_path == "[Reserved]"
+    ).first()
+    if existing_reserved:
+        if existing_reserved.year == year:
+            existing_reserved.folder_id = folder_id
+            db.commit()
+            return {"outward_no": existing_reserved.outward_no, "year": existing_reserved.year, "reused": True}
+        raise HTTPException(
+            status_code=400,
+            detail=f"You already have an unused reserved Outward Number for Year {existing_reserved.year}. Please save it before reserving a number for another year."
+        )
+
     # Retry loop to reserve the number
     for attempt in range(3):
         next_no = get_next_outward_no(folder_id, year, db)
@@ -222,8 +221,8 @@ def get_next_no(
             cc_to=[],
             subject="[Reserved Draft]",
             remarks="",
-            prepared_by="system",
-            actioned_by="system",
+            prepared_by=user_id,
+            actioned_by=user_id,
             template_type="Reserved",
             year=year
         )
@@ -239,7 +238,11 @@ def get_next_no(
 
 # FR-042: Save Draft
 @router.post("/draft")
-def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
+def save_draft(
+    payload: DraftCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Saves outward details as a draft and generates a .doc file on disk.
     
     Implements:
@@ -248,6 +251,7 @@ def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
     """
     year = payload.target_year if payload.target_year else get_effective_year()
     outward_no = payload.outward_no
+    actor_id = current_user.get("user_id")
     
     if not outward_no or outward_no.strip() == "":
         raise HTTPException(status_code=400, detail="Outward Number is required")
@@ -256,7 +260,9 @@ def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
     draft_record = db.query(models.DraftFile).filter(
         models.DraftFile.folder_id == payload.folder_id,
         models.DraftFile.year == year,
-        models.DraftFile.outward_no == outward_no
+        models.DraftFile.outward_no == outward_no,
+        models.DraftFile.actioned_by == actor_id,
+        models.DraftFile.file_path == "[Reserved]"
     ).first()
 
     if not draft_record:
@@ -264,7 +270,7 @@ def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
 
     # Filename format: draft-{UserID}-{YYYYMMDD}-{HHMMSS}.docx
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = f"draft-{payload.actioned_by}-{timestamp}.docx"
+    filename = f"draft-{actor_id}-{timestamp}.docx"
     
     relative_folder, full_folder = filesystem_utils.ensure_folder_path(get_iodms_root_path(), "Drafts", year, payload.folder_id)
     relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
@@ -273,6 +279,7 @@ def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
     # Update payload with the actual outward_no if it changed
     payload_dict = payload.model_dump()
     payload_dict["outward_no"] = outward_no
+    payload_dict["actioned_by"] = actor_id
     
     # Save the physical file on disk (FR-042)
     try:
@@ -293,15 +300,64 @@ def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
     draft_record.subject = payload.subject
     draft_record.remarks = payload.remarks
     draft_record.prepared_by = payload.prepared_by
-    draft_record.actioned_by = payload.actioned_by
+    draft_record.actioned_by = actor_id
     draft_record.template_type = payload.template_type
     draft_record.linked_documents = payload.linked_documents
     draft_record.attachment_paths = [relative_path]
+    log_edit(db, "draft", str(draft_record.draft_id), "create", actor_id, payload_dict)
     
     # We do NOT add a new record, we just commit the update
     # db.add(draft_record) is not needed because it's already attached to the session
     db.commit()
     return {"message": "Draft created successfully", "draft_id": draft_record.draft_id, "outward_no": outward_no, "success": True}
+
+
+# FR-170b: Attach supporting files to an outward draft from Compose Outward
+@router.post("/drafts/{draft_id}/attachments")
+def attach_draft_files(
+    draft_id: int,
+    files: List[UploadFile] = File([]),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Adds supporting PDFs, PPTs, DOCs, or other office files to an existing draft."""
+    draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if not files or (len(files) == 1 and files[0].filename == ""):
+        raise HTTPException(status_code=400, detail="At least one file is required.")
+
+    actor_id = current_user.get("user_id")
+    relative_folder, full_folder = filesystem_utils.ensure_folder_path(
+        get_iodms_root_path(), "Drafts", draft.year, draft.folder_id
+    )
+    existing_paths = draft.attachment_paths or []
+    new_paths = []
+
+    for idx, file in enumerate(files, start=1):
+        if not file.filename:
+            continue
+        ext = os.path.splitext(file.filename)[1] or ".bin"
+        filename = f"{draft.outward_no}_attachment_{len(existing_paths) + idx}{ext}"
+        relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
+        full_path = os.path.join(full_folder, filename)
+
+        try:
+            with open(full_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+            final_abs_path, was_compressed = filesystem_utils.compress_file_if_large(full_path)
+            if was_compressed:
+                final_filename = os.path.basename(final_abs_path)
+                relative_path = os.path.join(relative_folder, final_filename).replace("\\", "/")
+            new_paths.append(relative_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save attachment: {str(e)}")
+
+    draft.attachment_paths = existing_paths + new_paths
+    log_edit(db, "draft", str(draft_id), "attach", actor_id, {"files": new_paths})
+    db.commit()
+    return {"message": "Draft attachment files uploaded successfully", "files": new_paths, "success": True}
 
 
 # FR-057: Direct Draft Upload
@@ -316,7 +372,8 @@ def upload_existing_draft(
     prepared_by: str = Form(...),
     actioned_by: str = Form(...),
     files: List[UploadFile] = File([]),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Uploads an existing PDF or DOCX file directly as a new Draft.
     
@@ -324,6 +381,7 @@ def upload_existing_draft(
     - FR-057: Bypasses template generation and uses user-uploaded file.
     """
     year = get_effective_year()
+    actor_id = current_user.get("user_id")
     outward_no = get_next_outward_no(folder_id, year, db)
     
     attachment_paths = []
@@ -338,9 +396,9 @@ def upload_existing_draft(
         
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         if len(files) > 1:
-            filename = f"fax-{actioned_by}-{timestamp}_{idx+1}{ext}"
+            filename = f"fax-{actor_id}-{timestamp}_{idx+1}{ext}"
         else:
-            filename = f"fax-{actioned_by}-{timestamp}{ext}"
+            filename = f"fax-{actor_id}-{timestamp}{ext}"
         
         relative_folder, full_folder = filesystem_utils.ensure_folder_path(get_iodms_root_path(), "Drafts", year, folder_id)
         relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
@@ -381,7 +439,7 @@ def upload_existing_draft(
         subject=subject,
         remarks=remarks,
         prepared_by=prepared_by,
-        actioned_by=actioned_by,
+        actioned_by=actor_id,
         template_type="Manual Upload",
         is_locked=False,
         year=year
@@ -389,6 +447,12 @@ def upload_existing_draft(
     
     db.add(new_draft)
     db.commit()
+    log_edit(db, "draft", str(new_draft.draft_id), "create", actor_id, {
+        "outward_no": outward_no,
+        "folder_id": folder_id,
+        "subject": subject,
+        "uploaded_files": attachment_paths
+    })
     return {"message": "Draft uploaded successfully", "draft_id": new_draft.draft_id, "outward_no": outward_no, "success": True}
 
 # FR-052: Re-Upload Draft File (after editing)
@@ -396,7 +460,8 @@ def upload_existing_draft(
 def reupload_draft_file(
     draft_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Re-uploads an edited draft file and releases its lock.
     
@@ -404,11 +469,14 @@ def reupload_draft_file(
     - FR-052: User edits file locally and re-uploads it here.
     """
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
+    actor_id = current_user.get("user_id")
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
         
     if not draft.is_locked:
         raise HTTPException(status_code=400, detail="Draft is not locked. Lock it first before re-uploading.")
+    if draft.locked_by and draft.locked_by != actor_id:
+        raise HTTPException(status_code=403, detail=f"This draft is locked by {draft.locked_by}. Ask them or an Admin to release the lock.")
 
     full_path = os.path.join(get_iodms_root_path(), draft.file_path)
     
@@ -427,12 +495,11 @@ def reupload_draft_file(
         raise HTTPException(status_code=500, detail=f"Failed to overwrite draft file: {str(e)}")
 
     # Release lock after successful upload
-    locked_user = draft.locked_by
     draft.is_locked = False
     draft.locked_by = None
     draft.locked_at = None
     
-    log_edit(db, "draft", str(draft_id), "reupload", locked_user or "unknown")
+    log_edit(db, "draft", str(draft_id), "reupload", actor_id, {"filename": file.filename})
     
     db.commit()
     
@@ -446,7 +513,8 @@ def modify_outward(
     year: int,
     outward_no: str,
     payload: DraftCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Modifies an already dispatched outward record in place and updates its file.
     
@@ -461,6 +529,7 @@ def modify_outward(
 
     if not record:
         raise HTTPException(status_code=404, detail="Outward record not found")
+    actor_id = current_user.get("user_id")
 
     try:
         iss_date = datetime.datetime.strptime(payload.issuing_date, "%Y-%m-%d").date()
@@ -474,7 +543,7 @@ def modify_outward(
     record.subject = payload.subject
     record.remarks = payload.remarks
     record.prepared_by = payload.prepared_by
-    record.actioned_by = payload.actioned_by
+    record.actioned_by = actor_id
     record.template_type = payload.template_type
     old_links = record.linked_documents or []
     record.linked_documents = payload.linked_documents
@@ -489,7 +558,9 @@ def modify_outward(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to overwrite file on disk: {str(e)}")
 
-    log_edit(db, "outward", f"{folder_id}:{year}:{outward_no}", "edit", payload.actioned_by, payload.model_dump())
+    changes = payload.model_dump()
+    changes["actioned_by"] = actor_id
+    log_edit(db, "outward", f"{folder_id}:{year}:{outward_no}", "edit", actor_id, changes)
 
     db.commit()
     return {"message": "Outward record updated successfully", "success": True}
@@ -514,7 +585,7 @@ def get_drafts(db: Session = Depends(get_db)):
     ).all()
     pending_ids = [int(pd.record_id) for pd in pending_deletes]
 
-    query = db.query(models.DraftFile)
+    query = db.query(models.DraftFile).filter(models.DraftFile.file_path != "[Reserved]")
     if pending_ids:
         query = query.filter(~models.DraftFile.draft_id.in_(pending_ids))
     drafts = query.all()
@@ -544,6 +615,7 @@ def get_drafts(db: Session = Depends(get_db)):
             "remarks": d.remarks,
             "prepared_by": d.prepared_by,
             "actioned_by": d.actioned_by,
+            "attachment_paths": d.attachment_paths or [],
             "template_type": d.template_type,
             "is_locked": d.is_locked,
             "locked_by": d.locked_by,
@@ -554,17 +626,23 @@ def get_drafts(db: Session = Depends(get_db)):
 
 # FR-052: Lock draft file for editing
 @router.put("/drafts/{draft_id}/lock")
-def lock_draft(draft_id: int, payload: DraftLockAction, db: Session = Depends(get_db)):
+def lock_draft(
+    draft_id: int,
+    payload: DraftLockAction,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Locks the draft to prevent editing conflicts.
     
     Implements:
     - FR-052: Checks if locked by another user and rejects request.
     """
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
+    actor_id = current_user.get("user_id")
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
 
-    if draft.is_locked and draft.locked_by != payload.user_id:
+    if draft.is_locked and draft.locked_by != actor_id:
         # Find locked user name
         locker = db.query(models.User).filter(models.User.user_id == draft.locked_by).first()
         locker_name = locker.name if locker else draft.locked_by
@@ -574,10 +652,10 @@ def lock_draft(draft_id: int, payload: DraftLockAction, db: Session = Depends(ge
         )
 
     draft.is_locked = True
-    draft.locked_by = payload.user_id
+    draft.locked_by = actor_id
     draft.locked_at = datetime.datetime.now()
     
-    log_edit(db, "draft", str(draft_id), "lock", payload.user_id)
+    log_edit(db, "draft", str(draft_id), "lock", actor_id)
     
     db.commit()
     return {"message": "Draft file locked for editing", "file_path": draft.file_path, "success": True}
@@ -585,7 +663,11 @@ def lock_draft(draft_id: int, payload: DraftLockAction, db: Session = Depends(ge
 
 # FR-053: Unlock draft file
 @router.put("/drafts/{draft_id}/unlock")
-def unlock_draft(draft_id: int, db: Session = Depends(get_db)):
+def unlock_draft(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Unlocks the draft file.
     
     Implements:
@@ -595,12 +677,15 @@ def unlock_draft(draft_id: int, db: Session = Depends(get_db)):
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
 
+    actor_id = current_user.get("user_id")
+    if draft.locked_by and draft.locked_by != actor_id and current_user.get("role") != "Admin":
+        raise HTTPException(status_code=403, detail=f"This draft is locked by {draft.locked_by}. Only that user or an Admin can release it.")
     locked_user = draft.locked_by
     draft.is_locked = False
     draft.locked_by = None
     draft.locked_at = None
     
-    log_edit(db, "draft", str(draft_id), "unlock", locked_user or "unknown")
+    log_edit(db, "draft", str(draft_id), "unlock", actor_id, {"previously_locked_by": locked_user})
     
     db.commit()
     return {"message": "Draft file unlocked", "success": True}
@@ -608,7 +693,11 @@ def unlock_draft(draft_id: int, db: Session = Depends(get_db)):
 
 # FR-054: Dispatch Draft
 @router.post("/drafts/{draft_id}/dispatch")
-def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
+def dispatch_draft(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Dispatches a draft document, moving it to the final Outward Register.
     
     Implements:
@@ -622,6 +711,7 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
     if draft.is_locked:
          raise HTTPException(status_code=400, detail="Cannot dispatch a draft that is currently locked for editing.")
 
+    actor_id = current_user.get("user_id")
     year = draft.year
     folder_id = draft.folder_id
     
@@ -631,7 +721,6 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
 
     # If the reserved number is already used in register, fetch next
     register_conflict = db.query(models.OutwardRegister).filter(
-        models.OutwardRegister.folder_id == folder_id,
         models.OutwardRegister.year == year,
         models.OutwardRegister.outward_no == outward_no
     ).first()
@@ -704,7 +793,7 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
         subject=draft.subject,
         remarks=draft.remarks,
         prepared_by=draft.prepared_by,
-        actioned_by=draft.actioned_by,
+        actioned_by=actor_id,
         document_path=new_attachment_paths[0] if new_attachment_paths else new_relative_path,
         attachment_paths=new_attachment_paths,
         template_type=draft.template_type,
@@ -715,8 +804,8 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
     db.add(new_outward)
     
     # Log dispatch action
-    log_edit(db, "draft", str(draft_id), "dispatch", draft.actioned_by)
-    log_edit(db, "outward", f"{folder_id}:{year}:{outward_no}", "create", draft.actioned_by)
+    log_edit(db, "draft", str(draft_id), "dispatch", actor_id)
+    log_edit(db, "outward", f"{folder_id}:{year}:{outward_no}", "create", actor_id)
     
     # Sync links
     source_id = f"outward:{folder_id}:{year}:{outward_no}"
@@ -730,7 +819,11 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
 
 # FR-056: Discard Draft
 @router.delete("/drafts/{draft_id}")
-def discard_draft(draft_id: int, requester_id: str, db: Session = Depends(get_db)):
+def discard_draft(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Requests draft discarding.
     
     Implements:
@@ -739,14 +832,16 @@ def discard_draft(draft_id: int, requester_id: str, db: Session = Depends(get_db
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
     if not draft:
          raise HTTPException(status_code=404, detail="Draft not found")
+    actor_id = current_user.get("user_id")
 
     new_del = models.PendingDeletion(
         source_table="draft_files",
         record_id=str(draft_id),
-        requested_by=requester_id,
+        requested_by=actor_id,
         status="Pending"
     )
     db.add(new_del)
+    log_edit(db, "draft", str(draft_id), "discard", actor_id)
     db.commit()
     return {"message": "Draft discard requested. Awaiting Admin approval.", "success": True}
 
@@ -912,13 +1007,20 @@ def get_edit_log(record_type: str, record_id: str, db: Session = Depends(get_db)
 
 # FR-095: Soft-delete outward register entry
 @router.delete("/{folder_id}/{year}/{outward_no}")
-def delete_outward_record(folder_id: str, year: int, outward_no: str, requester_id: str, db: Session = Depends(get_db)):
+def delete_outward_record(
+    folder_id: str,
+    year: int,
+    outward_no: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Submits outward record deletion request.
     
     Implements:
     - FR-095: Logs request in pending_deletions.
     """
     key = f"{folder_id}:{year}:{outward_no}"
+    actor_id = current_user.get("user_id")
     
     existing = db.query(models.PendingDeletion).filter(
         models.PendingDeletion.source_table == "outward_register",
@@ -932,9 +1034,10 @@ def delete_outward_record(folder_id: str, year: int, outward_no: str, requester_
     new_del = models.PendingDeletion(
         source_table="outward_register",
         record_id=key,
-        requested_by=requester_id,
+        requested_by=actor_id,
         status="Pending"
     )
     db.add(new_del)
+    log_edit(db, "outward", key, "delete_request", actor_id)
     db.commit()
     return {"message": "Deletion request submitted to Admin.", "success": True}

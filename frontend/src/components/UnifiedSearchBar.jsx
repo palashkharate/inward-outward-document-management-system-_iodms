@@ -7,9 +7,12 @@ export default function UnifiedSearchBar({
   setSearchField, 
   searchQuery, 
   setSearchQuery, 
-  fieldOptions,
+  fieldOptions = [],
   dropdownOptions = null
 }) {
+  const selectedField = fieldOptions.find(o => o.value === searchField);
+  const selectedLabel = selectedField?.label || 'Search';
+
   return (
     <Card sx={{ mb: 3, border: '1px solid #E8EAED', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
       <CardContent sx={{ p: 2 }}>
@@ -41,7 +44,7 @@ export default function UnifiedSearchBar({
                   select
                   fullWidth
                   size="small"
-                  label={`Search by ${fieldOptions.find(o => o.value === searchField)?.label}...`}
+                  label={`Search by ${selectedLabel}...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 >
@@ -54,7 +57,7 @@ export default function UnifiedSearchBar({
                 <TextField
                   fullWidth
                   size="small"
-                  label={`Search by ${fieldOptions.find(o => o.value === searchField)?.label}...`}
+                  label={`Search by ${selectedLabel}...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   InputProps={{

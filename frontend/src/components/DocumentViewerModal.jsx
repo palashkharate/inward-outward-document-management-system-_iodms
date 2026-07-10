@@ -20,6 +20,7 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
   const [errorMsg, setErrorMsg] = useState('');
   const [blobUrl, setBlobUrl] = useState('');
   const [fileBlob, setFileBlob] = useState(null);
+  const [textPreview, setTextPreview] = useState('');
   
   const containerRef = useRef(null);
   const isDocx = fileName?.toLowerCase().endsWith('.docx');
@@ -28,6 +29,7 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
     if (!open || !fileUrl) {
       setBlobUrl('');
       setFileBlob(null);
+      setTextPreview('');
       return;
     }
 
@@ -68,10 +70,16 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
   useEffect(() => {
     if (isDocx && fileBlob && containerRef.current) {
       try {
+        if (containerRef.current) {
+          containerRef.current.innerHTML = '';
+        }
         docx.renderAsync(fileBlob, containerRef.current)
           .catch(err => {
             console.error("docx-preview error:", err);
-            setErrorMsg("Failed to render DOCX file.");
+            fileBlob.text().then((text) => {
+              setTextPreview(text);
+              setErrorMsg('');
+            }).catch(() => setErrorMsg("Failed to render DOCX file."));
           });
       } catch (err) {
         console.error("docx render exception:", err);
@@ -123,7 +131,7 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
                 title={fileName}
                 sx={{ width: '100%', height: '100%', border: 'none' }}
               />
-            ) : isDocx ? (
+            ) : isDocx && !textPreview ? (
               <Box 
                 ref={containerRef} 
                 sx={{ 
@@ -133,6 +141,10 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
                   bgcolor: '#f5f5f5' // docx-preview adds white pages on top of background
                 }} 
               />
+            ) : isDocx && textPreview ? (
+              <Box sx={{ p: 3, whiteSpace: 'pre-wrap', fontFamily: 'Consolas, monospace', overflow: 'auto', height: '100%' }}>
+                {textPreview}
+              </Box>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', p: 4 }}>
                 <Typography variant="h6" gutterBottom>
