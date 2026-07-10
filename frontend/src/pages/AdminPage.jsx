@@ -40,6 +40,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import StorageIcon from '@mui/icons-material/Storage';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useAuth } from '../App.jsx';
 
 export default function AdminPage() {
@@ -767,8 +768,10 @@ export default function AdminPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Source Table</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Record ID / Key</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Document</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Folder / Year</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Subject</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Files & Links</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Requested By</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Requested On</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
@@ -777,15 +780,59 @@ export default function AdminPage() {
               <TableBody>
                 {deletions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.secondary' }}>
                       No deletion requests awaiting approval.
                     </TableCell>
                   </TableRow>
                 ) : (
                   deletions.map((row) => (
                     <TableRow key={row.id}>
-                      <TableCell fontWeight={600}>{row.source_table}</TableCell>
-                      <TableCell>{row.record_id}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={700}>{row.document_type}</Typography>
+                        <Typography variant="caption" color="text.secondary">{row.document_no}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          Key: {row.source_table}:{row.record_id}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{row.folder_id || '-'}</Typography>
+                        <Typography variant="caption" color="text.secondary">{row.folder_name || '-'} / {row.year || '-'}</Typography>
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 280 }}>
+                        <Typography variant="body2" sx={{ whiteSpace: 'normal' }}>{row.subject || '-'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: row.linked_documents?.length ? 1 : 0 }}>
+                          {(row.files || []).length === 0 ? (
+                            <Typography variant="caption" color="text.secondary">No file attached</Typography>
+                          ) : (
+                            row.files.map((file) => (
+                              <Button
+                                key={file.path}
+                                size="small"
+                                variant="outlined"
+                                startIcon={<VisibilityIcon />}
+                                href={`/api/outward/view-document?path=${encodeURIComponent(file.path)}`}
+                                target="_blank"
+                              >
+                                {file.name}
+                              </Button>
+                            ))
+                          )}
+                        </Box>
+                        {row.linked_documents?.length > 0 && (
+                          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                            {row.linked_documents.map((doc) => (
+                              <Chip
+                                key={doc.id}
+                                size="small"
+                                label={`${doc.type} ${doc.number} / ${doc.folder_id} / ${doc.year}`}
+                                title={doc.subject || doc.id}
+                              />
+                            ))}
+                          </Box>
+                        )}
+                      </TableCell>
                       <TableCell>{row.requested_by}</TableCell>
                       <TableCell>{new Date(row.requested_on).toLocaleString()}</TableCell>
                       <TableCell align="right">

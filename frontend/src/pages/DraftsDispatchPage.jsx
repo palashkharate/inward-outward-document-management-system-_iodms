@@ -54,7 +54,14 @@ function DraftRow({ row, onAction, user, onViewFile }) {
   return (
     <>
       {/* Draft Summary Row (FR-050) */}
-      <TableRow hover sx={{ '& > *': { borderBottom: 'unset' }, bgcolor: row.is_locked ? 'rgba(255, 152, 0, 0.08)' : 'inherit' }}>
+      <TableRow
+        hover
+        sx={{
+          '& > *': { borderBottom: 'unset' },
+          bgcolor: row.is_pending_deletion ? 'rgba(0,0,0,0.04)' : row.is_locked ? 'rgba(255, 152, 0, 0.08)' : 'inherit',
+          opacity: row.is_pending_deletion ? 0.5 : 1
+        }}
+      >
         <TableCell>
           <IconButton size="small" aria-label="expand row" onClick={() => setOpen(!open)}>
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
@@ -70,7 +77,9 @@ function DraftRow({ row, onAction, user, onViewFile }) {
         <TableCell>{row.subject}</TableCell>
         <TableCell>{row.prepared_by}</TableCell>
         <TableCell>
-          {row.is_locked ? (
+          {row.is_pending_deletion ? (
+            <Chip size="small" color="default" label="Deletion Pending" />
+          ) : row.is_locked ? (
             <Alert icon={<LockIcon fontSize="inherit" />} severity="warning" sx={{ py: 0, px: 1, '& .MuiAlert-message': { p: 0 } }}>
               Locked by {row.locked_by}
             </Alert>
@@ -108,18 +117,40 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                   <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                     {([row.file_path, ...(row.attachment_paths || []).filter(p => p !== row.file_path)]).filter(Boolean).map((path, idx) => {
                       const name = path.split('\\').pop().split('/').pop();
+                      const isMainDraft = path === row.file_path;
                       return (
-                        <Button
-                          key={`${path}-${idx}`}
-                          size="small"
-                          variant="outlined"
-                          startIcon={<VisibilityIcon />}
-                          onClick={() => onViewFile(path)}
-                        >
-                          {name}
-                        </Button>
+                        <Box key={`${path}-${idx}`} sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<VisibilityIcon />}
+                            onClick={() => onViewFile(path)}
+                          >
+                            {isMainDraft ? `Main: ${name}` : name}
+                          </Button>
+                          {!isMainDraft && (
+                            <IconButton
+                              size="small"
+                              color="error"
+                              aria-label={`delete ${name}`}
+                              onClick={() => handleAction('delete_attachment', { ...row, attachmentPath: path })}
+                              disabled={row.is_pending_deletion}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
                       );
                     })}
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<FileUploadIcon />}
+                      onClick={() => handleAction('upload_attachments', row)}
+                      disabled={row.is_pending_deletion}
+                    >
+                      Upload More Files
+                    </Button>
                   </Box>
                 </Grid>
               </Grid>
@@ -141,6 +172,7 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                   color="primary"
                   startIcon={<EditIcon />}
                   onClick={() => handleAction('edit', row)}
+                  disabled={row.is_pending_deletion}
                 >
                   Open / Edit in Word
                 </Button>
@@ -151,7 +183,7 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                   color="success"
                   startIcon={<SendIcon />}
                   onClick={() => handleAction('dispatch', row)}
-                  disabled={row.is_locked}
+                  disabled={row.is_locked || row.is_pending_deletion}
                 >
                   Dispatch Document
                 </Button>
@@ -162,12 +194,13 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                   color="error"
                   startIcon={<DeleteIcon />}
                   onClick={() => handleAction('discard', row)}
+                  disabled={row.is_pending_deletion}
                 >
                   Discard Draft
                 </Button>
 
                 {/* Admin-only manual lock release (FR-053) */}
-                {row.is_locked && user?.role === 'Admin' && (
+                {row.is_locked && user?.role === 'Admin' && !row.is_pending_deletion && (
                   <Button
                     variant="contained"
                     color="warning"
@@ -225,6 +258,7 @@ export default function DraftsDispatchPage() {
 
   // FR-052 Re-upload State
   const [reuploadFile, setReuploadFile] = useState(null);
+  const [attachmentUploadFiles, setAttachmentUploadFiles] = useState([]);
 
   // Lock Dialog state
   const [lockOpen, setLockOpen] = useState(false);
@@ -235,6 +269,9 @@ export default function DraftsDispatchPage() {
 
   // Discard Confirm dialog
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+
+  // Supporting file management dialog
+  const [attachmentUploadOpen, setAttachmentUploadOpen] = useState(false);
 
   const fetchDrafts = async () => {
     try {
@@ -280,6 +317,47 @@ export default function DraftsDispatchPage() {
       setDispatchConfirmOpen(true);
     } else if (action === 'discard') {
       setDiscardConfirmOpen(true);
+    } else if (action === 'upload_attachments') {
+      setAttachmentUploadFiles([]);
+      setAttachmentUploadOpen(true);
+    } else if (action === 'delete_attachment') {
+      await deleteAttachment(row);
+    }
+  };
+
+  const deleteAttachment = async (row) => {
+    const filename = row.attachmentPath?.split('\\').pop().split('/').pop();
+    if (!row.attachmentPath || !window.confirm(`Delete supporting file "${filename}" from this draft?`)) {
+      return;
+    }
+    try {
+      await axios.delete(`/api/outward/drafts/${row.draft_id}/attachments`, {
+        params: { path: row.attachmentPath }
+      });
+      setSuccessMsg('Supporting file deleted successfully.');
+      fetchDrafts();
+    } catch (err) {
+      setErrorMsg(err.response?.data?.detail || 'Failed to delete supporting file.');
+    }
+  };
+
+  const uploadMoreAttachments = async () => {
+    if (!activeDraft || attachmentUploadFiles.length === 0) {
+      setErrorMsg('Please select at least one file to upload.');
+      return;
+    }
+    const formData = new FormData();
+    attachmentUploadFiles.forEach(file => formData.append('files', file));
+    try {
+      await axios.post(`/api/outward/drafts/${activeDraft.draft_id}/attachments`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccessMsg('Supporting files uploaded successfully.');
+      setAttachmentUploadOpen(false);
+      setAttachmentUploadFiles([]);
+      fetchDrafts();
+    } catch (err) {
+      setErrorMsg(err.response?.data?.detail || 'Failed to upload supporting files.');
     }
   };
 
@@ -299,11 +377,9 @@ export default function DraftsDispatchPage() {
     setDiscardConfirmOpen(false);
     try {
       // FR-056: Discard draft (soft-delete)
-      await axios.delete(`/api/outward/drafts/${activeDraft.draft_id}`, {
-        params: { requester_id: user.user_id }
-      });
-      setSuccessMsg('Draft discard requested. Awaiting Admin approval.');
-      fetchDrafts(); // Draft gets hidden immediately
+      await axios.delete(`/api/outward/drafts/${activeDraft.draft_id}`);
+      setSuccessMsg('Draft discard requested. It will remain greyed out until Admin approval.');
+      fetchDrafts();
     } catch (err) {
       setErrorMsg('Failed to request draft discard.');
     }
@@ -491,12 +567,43 @@ export default function DraftsDispatchPage() {
         <DialogContent>
           <Typography>
             Are you sure you want to discard Outward No. <strong>{activeDraft?.outward_no}</strong>?<br />
-            This will submit a discard request to the Admin. The draft will be hidden from this list immediately.
+            This will submit a discard request to the Admin. The draft will remain greyed out in this list until approved or rejected.
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDiscardConfirmOpen(false)}>Cancel</Button>
           <Button onClick={executeDiscard} color="error" variant="contained">Request Discard</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* FR-170b: Upload additional supporting files to an active draft */}
+      <Dialog open={attachmentUploadOpen} onClose={() => setAttachmentUploadOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload Supporting Files</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Add more files to Outward No. <strong>{activeDraft?.outward_no}</strong>. The main draft document remains unchanged.
+          </Typography>
+          <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
+            Select Files
+            <input
+              type="file"
+              hidden
+              multiple
+              accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+              onChange={(e) => setAttachmentUploadFiles(Array.from(e.target.files || []))}
+            />
+          </Button>
+          <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {attachmentUploadFiles.map((file) => (
+              <Chip key={`${file.name}-${file.size}`} label={file.name} />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAttachmentUploadOpen(false)}>Cancel</Button>
+          <Button onClick={uploadMoreAttachments} variant="contained" disabled={attachmentUploadFiles.length === 0}>
+            Upload Files
+          </Button>
         </DialogActions>
       </Dialog>
       <DocumentViewerModal

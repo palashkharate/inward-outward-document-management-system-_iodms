@@ -233,19 +233,140 @@ def permanent_delete_user(user_id: str, db: Session = Depends(get_db)):
 
 # --- Pending Approvals - Deletion Requests (9B) ---
 
+def _folder_name(db: Session, folder_id: str) -> str:
+    folder = db.query(models.FolderType).filter(models.FolderType.folder_id == folder_id).first()
+    return folder.folder_name if folder else ""
+
+def _file_label(path: str) -> dict:
+    return {"path": path, "name": os.path.basename(path)} if path else None
+
+def _linked_document_summary(db: Session, doc_id: str) -> dict:
+    try:
+        doc_type, folder_id, year, number = doc_id.split(":", 3)
+        if doc_type == "inward":
+            record = db.query(models.InwardRegister).filter(
+                models.InwardRegister.folder_id == folder_id,
+                models.InwardRegister.year == int(year),
+                models.InwardRegister.inward_no == number
+            ).first()
+            if record:
+                return {
+                    "id": doc_id,
+                    "type": "Inward",
+                    "number": record.inward_no,
+                    "folder_id": record.folder_id,
+                    "folder_name": _folder_name(db, record.folder_id),
+                    "year": record.year,
+                    "subject": record.subject
+                }
+        if doc_type == "outward":
+            record = db.query(models.OutwardRegister).filter(
+                models.OutwardRegister.folder_id == folder_id,
+                models.OutwardRegister.year == int(year),
+                models.OutwardRegister.outward_no == number
+            ).first()
+            if record:
+                return {
+                    "id": doc_id,
+                    "type": "Outward",
+                    "number": record.outward_no,
+                    "folder_id": record.folder_id,
+                    "folder_name": _folder_name(db, record.folder_id),
+                    "year": record.year,
+                    "subject": record.subject
+                }
+    except ValueError:
+        pass
+    return {"id": doc_id, "type": "Unknown", "number": "", "folder_id": "", "folder_name": "", "year": "", "subject": ""}
+
+def _pending_deletion_context(db: Session, deletion: models.PendingDeletion) -> dict:
+    table = deletion.source_table
+    record_id = deletion.record_id
+    context = {
+        "document_type": table,
+        "document_no": record_id,
+        "folder_id": "",
+        "folder_name": "",
+        "year": "",
+        "subject": "",
+        "files": [],
+        "linked_documents": []
+    }
+
+    if table == "draft_files" and str(record_id).isdigit():
+        item = db.query(models.DraftFile).filter(models.DraftFile.draft_id == int(record_id)).first()
+        if item:
+            files = [_file_label(item.file_path)]
+            files.extend(_file_label(path) for path in (item.attachment_paths or []) if path != item.file_path)
+            context.update({
+                "document_type": "Draft Outward",
+                "document_no": f"Outward No. {item.outward_no}",
+                "folder_id": item.folder_id,
+                "folder_name": _folder_name(db, item.folder_id),
+                "year": item.year,
+                "subject": item.subject,
+                "files": [f for f in files if f],
+                "linked_documents": [_linked_document_summary(db, doc_id) for doc_id in (item.linked_documents or [])]
+            })
+    elif table == "inward_register":
+        folder_id, year, inward_no = record_id.split(":")
+        item = db.query(models.InwardRegister).filter(
+            models.InwardRegister.folder_id == folder_id,
+            models.InwardRegister.year == int(year),
+            models.InwardRegister.inward_no == inward_no
+        ).first()
+        if item:
+            files = [_file_label(item.attachment_path)]
+            files.extend(_file_label(path) for path in (item.attachment_paths or []) if path != item.attachment_path)
+            context.update({
+                "document_type": "Inward",
+                "document_no": f"Inward No. {item.inward_no}",
+                "folder_id": item.folder_id,
+                "folder_name": _folder_name(db, item.folder_id),
+                "year": item.year,
+                "subject": item.subject,
+                "files": [f for f in files if f],
+                "linked_documents": [_linked_document_summary(db, doc_id) for doc_id in (item.linked_documents or [])]
+            })
+    elif table == "outward_register":
+        folder_id, year, outward_no = record_id.split(":")
+        item = db.query(models.OutwardRegister).filter(
+            models.OutwardRegister.folder_id == folder_id,
+            models.OutwardRegister.year == int(year),
+            models.OutwardRegister.outward_no == outward_no
+        ).first()
+        if item:
+            files = [_file_label(item.document_path)]
+            files.extend(_file_label(path) for path in (item.attachment_paths or []) if path != item.document_path)
+            context.update({
+                "document_type": "Outward",
+                "document_no": f"Outward No. {item.outward_no}",
+                "folder_id": item.folder_id,
+                "folder_name": _folder_name(db, item.folder_id),
+                "year": item.year,
+                "subject": item.subject,
+                "files": [f for f in files if f],
+                "linked_documents": [_linked_document_summary(db, doc_id) for doc_id in (item.linked_documents or [])]
+            })
+    return context
+
 # FR-120: View pending deletions
 @router.get("/pending-deletions")
 def get_pending_deletions(db: Session = Depends(get_db)):
     """Lists all deletion requests awaiting Admin action."""
     deletions = db.query(models.PendingDeletion).filter(models.PendingDeletion.status == "Pending").all()
-    return [{
-        "id": d.id,
-        "source_table": d.source_table,
-        "record_id": d.record_id,
-        "requested_by": d.requested_by,
-        "requested_on": d.requested_on.isoformat(),
-        "status": d.status
-    } for d in deletions]
+    output = []
+    for d in deletions:
+        output.append({
+            "id": d.id,
+            "source_table": d.source_table,
+            "record_id": d.record_id,
+            "requested_by": d.requested_by,
+            "requested_on": d.requested_on.isoformat(),
+            "status": d.status,
+            **_pending_deletion_context(db, d)
+        })
+    return output
 
 # FR-084, FR-095: Get Permanently Deleted (Lost) Numbers
 @router.get("/permanently-deleted")

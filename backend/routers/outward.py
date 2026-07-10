@@ -59,6 +59,31 @@ def log_edit(db: Session, record_type: str, record_id: str, action: str, user_id
     db.add(log)
     db.commit()
 
+def parse_document_date(value: str) -> datetime.date:
+    """Parses and bounds office document dates before saving to registers."""
+    try:
+        parsed = datetime.datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    min_date = datetime.date(1947, 8, 15)
+    today = datetime.date.today()
+    if parsed < min_date or parsed > today:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date of Document must be between {min_date.isoformat()} and {today.isoformat()}."
+        )
+    return parsed
+
+def ensure_draft_not_pending_deletion(db: Session, draft_id: int):
+    pending = db.query(models.PendingDeletion).filter(
+        models.PendingDeletion.source_table == "draft_files",
+        models.PendingDeletion.record_id == str(draft_id),
+        models.PendingDeletion.status == "Pending"
+    ).first()
+    if pending:
+        raise HTTPException(status_code=400, detail="Deletion is pending for this draft. Admin approval is required before further action.")
+
 # FR-055: Pre-assign and reserve Outward number
 def get_next_outward_no(folder_id: str, year: int, db: Session) -> str:
     """Gets the next sequential Outward Number by looking at the whole outward year.
@@ -287,10 +312,7 @@ def save_draft(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create draft document on disk: {str(e)}")
 
-    try:
-        iss_date = datetime.datetime.strptime(payload.issuing_date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    iss_date = parse_document_date(payload.issuing_date)
 
     # Update the reserved draft record
     draft_record.file_path = relative_path
@@ -324,6 +346,7 @@ def attach_draft_files(
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    ensure_draft_not_pending_deletion(db, draft_id)
     if not files or (len(files) == 1 and files[0].filename == ""):
         raise HTTPException(status_code=400, detail="At least one file is required.")
 
@@ -358,6 +381,44 @@ def attach_draft_files(
     log_edit(db, "draft", str(draft_id), "attach", actor_id, {"files": new_paths})
     db.commit()
     return {"message": "Draft attachment files uploaded successfully", "files": new_paths, "success": True}
+
+
+# FR-170c: Remove a supporting file from an active outward draft
+@router.delete("/drafts/{draft_id}/attachments")
+def delete_draft_attachment(
+    draft_id: int,
+    path: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Deletes a supporting attachment while protecting the main draft document."""
+    draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    ensure_draft_not_pending_deletion(db, draft_id)
+    if path == draft.file_path:
+        raise HTTPException(status_code=400, detail="Main draft document cannot be deleted. Replace it through Open / Edit and re-upload.")
+
+    existing_paths = draft.attachment_paths or []
+    if path not in existing_paths:
+        raise HTTPException(status_code=404, detail="Attachment not found on this draft.")
+
+    actor_id = current_user.get("user_id")
+    root_path = os.path.abspath(get_iodms_root_path())
+    full_path = os.path.abspath(os.path.join(root_path, path))
+    if os.path.commonpath([root_path, full_path]) != root_path:
+        raise HTTPException(status_code=400, detail="Invalid attachment path.")
+
+    draft.attachment_paths = [p for p in existing_paths if p != path]
+    if os.path.exists(full_path):
+        try:
+            os.remove(full_path)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete attachment file: {str(e)}")
+
+    log_edit(db, "draft", str(draft_id), "delete_attachment", actor_id, {"file": path})
+    db.commit()
+    return {"message": "Attachment deleted successfully.", "success": True}
 
 
 # FR-057: Direct Draft Upload
@@ -420,10 +481,7 @@ def upload_existing_draft(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
 
-    try:
-        iss_date = datetime.datetime.strptime(issuing_date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    iss_date = parse_document_date(issuing_date)
         
     addr_list = [int(i.strip()) for i in address_to.split(",") if i.strip().isdigit()]
     cc_list = [int(i.strip()) for i in cc_to.split(",") if i.strip().isdigit()]
@@ -472,6 +530,7 @@ def reupload_draft_file(
     actor_id = current_user.get("user_id")
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    ensure_draft_not_pending_deletion(db, draft_id)
         
     if not draft.is_locked:
         raise HTTPException(status_code=400, detail="Draft is not locked. Lock it first before re-uploading.")
@@ -531,10 +590,7 @@ def modify_outward(
         raise HTTPException(status_code=404, detail="Outward record not found")
     actor_id = current_user.get("user_id")
 
-    try:
-        iss_date = datetime.datetime.strptime(payload.issuing_date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    iss_date = parse_document_date(payload.issuing_date)
 
     # Update database record
     record.issuing_date = iss_date
@@ -574,20 +630,17 @@ def get_drafts(db: Session = Depends(get_db)):
     Implements:
     - FR-050: Lists all drafts.
     - FR-057: No per-user filtering (all users see all drafts).
-    - Excludes drafts pending deletion.
+    - Marks drafts pending deletion so users can see them greyed out until Admin action.
     """
     check_draft_locks(db)
 
-    # Exclude drafts that are flagged in pending_deletions
     pending_deletes = db.query(models.PendingDeletion).filter(
         models.PendingDeletion.source_table == "draft_files",
         models.PendingDeletion.status == "Pending"
     ).all()
-    pending_ids = [int(pd.record_id) for pd in pending_deletes]
+    pending_ids = {int(pd.record_id) for pd in pending_deletes if str(pd.record_id).isdigit()}
 
     query = db.query(models.DraftFile).filter(models.DraftFile.file_path != "[Reserved]")
-    if pending_ids:
-        query = query.filter(~models.DraftFile.draft_id.in_(pending_ids))
     drafts = query.all()
     
     output = []
@@ -619,7 +672,8 @@ def get_drafts(db: Session = Depends(get_db)):
             "template_type": d.template_type,
             "is_locked": d.is_locked,
             "locked_by": d.locked_by,
-            "created_on": d.created_on.isoformat()
+            "created_on": d.created_on.isoformat(),
+            "is_pending_deletion": d.draft_id in pending_ids
         })
     return output
 
@@ -641,6 +695,7 @@ def lock_draft(
     actor_id = current_user.get("user_id")
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    ensure_draft_not_pending_deletion(db, draft_id)
 
     if draft.is_locked and draft.locked_by != actor_id:
         # Find locked user name
@@ -676,6 +731,7 @@ def unlock_draft(
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    ensure_draft_not_pending_deletion(db, draft_id)
 
     actor_id = current_user.get("user_id")
     if draft.locked_by and draft.locked_by != actor_id and current_user.get("role") != "Admin":
@@ -707,6 +763,7 @@ def dispatch_draft(
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    ensure_draft_not_pending_deletion(db, draft_id)
 
     if draft.is_locked:
          raise HTTPException(status_code=400, detail="Cannot dispatch a draft that is currently locked for editing.")
@@ -827,12 +884,20 @@ def discard_draft(
     """Requests draft discarding.
     
     Implements:
-    - FR-056: Creates deletion request in pending_deletions; draft hidden immediately.
+    - FR-056: Creates deletion request in pending_deletions; draft remains visible but greyed out.
     """
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
     if not draft:
          raise HTTPException(status_code=404, detail="Draft not found")
     actor_id = current_user.get("user_id")
+
+    existing = db.query(models.PendingDeletion).filter(
+        models.PendingDeletion.source_table == "draft_files",
+        models.PendingDeletion.record_id == str(draft_id),
+        models.PendingDeletion.status == "Pending"
+    ).first()
+    if existing:
+        return {"message": "Draft discard request is already pending Admin approval.", "success": True}
 
     new_del = models.PendingDeletion(
         source_table="draft_files",

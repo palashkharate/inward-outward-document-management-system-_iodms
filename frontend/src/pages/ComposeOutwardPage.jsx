@@ -31,6 +31,9 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useAuth } from '../App.jsx';
 
+const MIN_DOCUMENT_DATE = '1947-08-15';
+const todayIsoDate = () => new Date().toISOString().split('T')[0];
+
 export default function ComposeOutwardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -46,7 +49,7 @@ export default function ComposeOutwardPage() {
   const [outNo, setOutNo] = useState('');
   const [subject, setSubject] = useState('');
   const [preparedBy, setPreparedBy] = useState(user?.user_id || '');
-  const [dateVal, setDateVal] = useState(new Date().toISOString().split('T')[0]);
+  const [dateVal, setDateVal] = useState(todayIsoDate());
   const [folderId, setFolderId] = useState('');
   const [folderName, setFolderName] = useState('');
   const [templateType, setTemplateType] = useState('');
@@ -124,7 +127,8 @@ export default function ComposeOutwardPage() {
       setOutNo(data.outNo || '');
       setSubject(data.subject || '');
       setPreparedBy(data.preparedBy || user?.user_id || '');
-      setDateVal(data.dateVal || new Date().toISOString().split('T')[0]);
+      const savedDate = data.dateVal || todayIsoDate();
+      setDateVal(savedDate >= MIN_DOCUMENT_DATE && savedDate <= todayIsoDate() ? savedDate : todayIsoDate());
       setFolderId(data.folderId || '');
       setFolderName(data.folderName || '');
       setTemplateType(data.templateType || '');
@@ -276,6 +280,23 @@ export default function ComposeOutwardPage() {
     }
   };
 
+  const handleDocumentDateChange = (value) => {
+    const today = todayIsoDate();
+    if (!value) {
+      setDateVal(today);
+      return;
+    }
+    if (value < MIN_DOCUMENT_DATE) {
+      setDateVal(MIN_DOCUMENT_DATE);
+      return;
+    }
+    if (value > today) {
+      setDateVal(today);
+      return;
+    }
+    setDateVal(value);
+  };
+
   // Reset form to blank state (FR-030)
   const handleNew = () => {
     setSubject('');
@@ -326,6 +347,12 @@ export default function ComposeOutwardPage() {
 
     if (!folderId || !subject || !addressTo) {
       setErrorMsg('Subject, Folder ID and Address To are required.');
+      return;
+    }
+
+    const today = todayIsoDate();
+    if (!dateVal || dateVal < MIN_DOCUMENT_DATE || dateVal > today) {
+      setErrorMsg(`Date of Document must be between ${MIN_DOCUMENT_DATE} and ${today}.`);
       return;
     }
     
@@ -478,7 +505,13 @@ export default function ComposeOutwardPage() {
                 type="date"
                 label="Date of Document"
                 value={dateVal}
-                onChange={(e) => setDateVal(e.target.value)}
+                onChange={(e) => handleDocumentDateChange(e.target.value)}
+                onBlur={(e) => handleDocumentDateChange(e.target.value)}
+                inputProps={{
+                  min: MIN_DOCUMENT_DATE,
+                  max: todayIsoDate(),
+                  step: 1
+                }}
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
