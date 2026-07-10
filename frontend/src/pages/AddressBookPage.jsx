@@ -31,6 +31,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
+import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
 import { useAuth } from '../App.jsx';
 
 export default function AddressBookPage() {
@@ -225,47 +226,24 @@ export default function AddressBookPage() {
       {errorMsg && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{errorMsg}</Alert>}
 
       {/* Field-Selector Search Control (FR-101) */}
-      <Card sx={{ mb: 3, border: '1px solid #D1D5DB' }}>
-        <CardContent sx={{ p: 2 }}>
-          <Grid container spacing={2} alignItems="center">
-            {/* Field selector */}
-            <Grid item xs={12} sm={4} md={3}>
-              <TextField
-                select
-                fullWidth
-                size="small"
-                label="Choose Search Field"
-                value={searchField}
-                onChange={(e) => {
-                  setSearchField(e.target.value);
-                  setSearchQuery('');
-                }}
-              >
-                <MenuItem value="name">Name</MenuItem>
-                <MenuItem value="designation">Designation</MenuItem>
-                <MenuItem value="organisation">Organisation</MenuItem>
-                <MenuItem value="fax_no">Fax No.</MenuItem>
-                <MenuItem value="email">Email</MenuItem>
-              </TextField>
-            </Grid>
-            {/* Query input */}
-            <Grid item xs={12} sm={8} md={9}>
-              <TextField
-                fullWidth
-                size="small"
-                label={`Search contacts by ${searchField.replace('_', ' ')}...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+      <UnifiedSearchBar 
+        searchField={searchField}
+        setSearchField={setSearchField}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        fieldOptions={[
+          { value: 'name', label: 'Name' },
+          { value: 'designation', label: 'Designation' },
+          { value: 'organisation', label: 'Organisation' },
+          { value: 'fax_no', label: 'Fax No.' },
+          { value: 'email', label: 'Email' }
+        ]}
+      />
 
       {/* Paginated Grid (FR-100) */}
-      <TableContainer component={Paper} sx={{ border: '1px solid #D1D5DB' }}>
+      <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
         <Table size="small">
-          <TableHead sx={{ bgcolor: '#0F766E !important' }}>
+          <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 600 }}>ID</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>

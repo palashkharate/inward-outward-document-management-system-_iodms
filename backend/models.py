@@ -61,6 +61,9 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(String(50), nullable=False)  # User or Admin
     is_active = Column(Boolean, nullable=False, default=True)
+    is_deleted = Column(Boolean, nullable=False, default=False)
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_by = Column(String(100), nullable=True)
 
 
 class ReceivedFromList(Base):
@@ -102,11 +105,20 @@ class InwardRegister(Base):
     assign_to = Column(ARRAY(String(100)), default=[])
     cc_sent_to = Column(ARRAY(Integer), default=[])
     remarks = Column(Text)
+    actioned_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
     document_type = Column(String(50), nullable=False)  # 'Query', 'Snag', 'File'
     scanned_format = Column(String(50))  # FR-063: Image/Doc/PDF
-    status = Column(String(50), nullable=False, default="Active")  # 'Active', 'Not Active'
-    attachment_path = Column(String(500))
-    attachment_original_ext = Column(String(50))
+    status = Column(String(50), nullable=False, default="Active")  # 'Active', 'Not Active', 'Permanently Deleted'
+    attachment_path = Column(String(500)) # legacy single file
+    attachment_original_ext = Column(String(50)) # legacy single file
+    attachment_paths = Column(ARRAY(String(500)), default=[]) # FR-170
+    linked_documents = Column(ARRAY(String(255)), default=[]) # FR-171
+    # FR-160, FR-161: Timestamps and Compression
+    created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+    updated_at = Column(TIMESTAMP, nullable=True, onupdate=func.current_timestamp())
+    is_compressed = Column(Boolean, default=False)
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"), nullable=True)
 
 
 class OutwardRegister(Base):
@@ -128,6 +140,15 @@ class OutwardRegister(Base):
     actioned_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
     document_path = Column(String(500), nullable=False)
     template_type = Column(String(100), nullable=False)  # 'Fax_With_GM_Sig', 'Fax_Without_GM_Sig', 'Internal_Letter'
+    linked_documents = Column(ARRAY(String(255)), default=[]) # FR-171
+    attachment_paths = Column(ARRAY(String(500)), default=[]) # FR-170b
+    status = Column(String(50), nullable=False, default="Active")  # 'Active', 'Not Active', 'Permanently Deleted'
+    # FR-160: Timestamps
+    created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+    updated_at = Column(TIMESTAMP, nullable=True, onupdate=func.current_timestamp())
+    is_compressed = Column(Boolean, default=False)
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"), nullable=True)
 
 
 class DraftFile(Base):
@@ -138,6 +159,8 @@ class DraftFile(Base):
 
     draft_id = Column(Integer, primary_key=True, autoincrement=True)
     file_path = Column(String(500), nullable=False)
+    attachment_paths = Column(ARRAY(String(500)), default=[]) # FR-170b
+    linked_documents = Column(ARRAY(String(255)), default=[]) # FR-171
     outward_no = Column(String(10), nullable=False)
     folder_id = Column(String(50), ForeignKey("folder_types.folder_id", onupdate="CASCADE"))
     issuing_date = Column(Date, nullable=False)
@@ -150,8 +173,28 @@ class DraftFile(Base):
     template_type = Column(String(100), nullable=False)  # 'Fax_With_GM_Sig', 'Fax_Without_GM_Sig', 'Internal_Letter'
     is_locked = Column(Boolean, nullable=False, default=False)
     locked_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
+    locked_at = Column(TIMESTAMP, nullable=True)
     year = Column(Integer, nullable=False)
     created_on = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+    # FR-160, FR-161: Timestamps and Compression
+    updated_at = Column(TIMESTAMP, nullable=True, onupdate=func.current_timestamp())
+    is_compressed = Column(Boolean, default=False)
+
+
+class EditLog(Base):
+    """
+    FR-058: Edit Audit Log.
+    Tracks every create, edit, lock, unlock, dispatch, or re-upload action.
+    """
+    __tablename__ = "edit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    record_type = Column(String(50), nullable=False)  # 'inward', 'outward', 'draft'
+    record_id = Column(String(255), nullable=False)   # folder_id:year:number or draft_id
+    action = Column(String(50), nullable=False)       # create, edit, lock, unlock, dispatch, reupload
+    changes = Column(JSONB, nullable=True)            # Diff of before/after
+    edited_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
+    edited_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
 
 
 class PendingDeletion(Base):
@@ -181,3 +224,61 @@ class PendingProfileEdit(Base):
     proposed_changes = Column(JSONB, nullable=False)  # e.g., {"name": "New Name", "dob": "YYYY-MM-DD"}
     requested_on = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
     status = Column(String(50), nullable=False, default="Pending")  # 'Pending', 'Approved', 'Rejected'
+
+
+class DocumentTemplate(Base):
+    """
+    FR-143: Template Management.
+    """
+    __tablename__ = "document_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    template_type = Column(String(100), nullable=False) # e.g. General, Confidential, Secret
+    file_path = Column(String(500), nullable=False)
+    uploaded_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
+    uploaded_on = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+
+
+class LoginLog(Base):
+    """FR-162: Security login audit log."""
+    __tablename__ = "login_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(100), nullable=False)  # attempted user_id (may not exist)
+    ip_address = Column(String(45), nullable=False)  # IPv4 or IPv6
+    user_agent = Column(String(500), nullable=True)
+    success = Column(Boolean, nullable=False)
+    failure_reason = Column(String(255), nullable=True)  # e.g. "Invalid password", "Account deleted"
+    logged_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+
+
+class AllowedIP(Base):
+    """
+    FR-172: IP Address Configuration for Security Whitelisting.
+    """
+    __tablename__ = "allowed_ips"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ip_address = Column(String(100), unique=True, nullable=False) # exact IP or wildcard like 192.168.1.*
+    description = Column(String(255), nullable=True)
+    added_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
+    added_on = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+
+
+class TrashBin(Base):
+    """FR-164: Temporary recycle bin for deleted records."""
+    __tablename__ = "trash_bin"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_table = Column(String(100), nullable=False)     # 'inward_register', 'outward_register', 'draft_files'
+    record_data = Column(JSONB, nullable=False)             # Full serialized record snapshot
+    original_file_path = Column(String(500), nullable=True) # Original file location
+    trash_file_path = Column(String(500), nullable=True)    # File location in Trash/
+    deleted_by = Column(String(100), ForeignKey("users.user_id"))
+    trashed_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+    expires_at = Column(TIMESTAMP, nullable=False)          # trashed_at + 30 days
+    is_permanently_deleted = Column(Boolean, default=False)
+
+
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useDropzone } from 'react-dropzone';
 import {
@@ -23,7 +23,8 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemButton
+  ListItemButton,
+  Autocomplete
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -38,8 +39,13 @@ export default function LogInwardPage() {
   const navigate = useNavigate();
   const { folder_id, year, inward_no } = useParams();
   const isModifyMode = !!inward_no;
+  
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isTargetYearMode = searchParams.get('target_year') === 'true';
 
   // Form Fields
+  const [targetYearVal, setTargetYearVal] = useState(new Date().getFullYear() - 1);
   const [inNo, setInNo] = useState('');
   const [receivingDate, setReceivingDate] = useState(new Date().toISOString().split('T')[0]);
   const [scannedFormat, setScannedFormat] = useState('PDF');
@@ -55,7 +61,9 @@ export default function LogInwardPage() {
   const [folderName, setFolderName] = useState('');
   const [assignTo, setAssignTo] = useState([]); // user IDs
   const [ccSentTo, setCcSentTo] = useState([]); // address IDs
-  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [linkedDocuments, setLinkedDocuments] = useState([]);
+  const [availableDocuments, setAvailableDocuments] = useState([]);
 
   // Master Lists
   const [usersList, setUsersList] = useState([]);
@@ -72,6 +80,8 @@ export default function LogInwardPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  // FR-060: Track whether the inward number has been explicitly reserved
+  const [isReserved, setIsReserved] = useState(false);
 
   // Inline List Editor helper states
   const [newItemName, setNewItemName] = useState('');
@@ -103,8 +113,13 @@ export default function LogInwardPage() {
           const first = foldersRes.data[0];
           setFolderId(first.folder_id);
           setFolderName(first.folder_name);
-          fetchNextInwardNo(first.folder_id);
+          setInNo('');
+          setIsReserved(false);
         }
+        
+        // Fetch available documents for linking
+        const docsRes = await axios.get('/api/dashboard/search-documents?query=');
+        setAvailableDocuments(docsRes.data);
       } catch (e) {
         setErrorMsg('Failed to load form master lists.');
       }
@@ -137,6 +152,7 @@ export default function LogInwardPage() {
             setDocType(match.document_type);
             setStatusVal(match.status);
             setAssignTo(match.assign_to || []);
+            setLinkedDocuments(match.linked_documents || []);
             
             // Map CC names to IDs
             const fetchedContacts = await axios.get('/api/admin/address-book?limit=1000');
@@ -155,16 +171,25 @@ export default function LogInwardPage() {
     }
   }, [isModifyMode, folder_id, year, inward_no]);
 
-  // Fetch next Inward No. (FR-060)
-  const fetchNextInwardNo = async (fid) => {
-    if (isModifyMode) return;
+
+
+  // FR-060: Actually reserve the number (called when officer clicks "Get Number")
+  // This creates a "Reserved" row in the database so no one else can take it.
+  const reserveInwardNo = async () => {
+    if (isModifyMode || isReserved) return;
     try {
-      const response = await axios.get('/api/inward/next-no', {
-        params: { folder_id: fid }
-      });
+      const params = { folder_id: folderId };
+      if (isTargetYearMode) {
+        params.target_year = targetYearVal;
+      }
+      const response = await axios.get('/api/inward/next-no', { params });
       setInNo(response.data.inward_no);
+      setIsReserved(true);
+      setErrorMsg('');
+      setSuccessMsg(`Inward No. ${response.data.inward_no} has been reserved for you.`);
     } catch (e) {
       console.error(e);
+      setErrorMsg(e.response?.data?.detail || 'Failed to reserve inward number.');
     }
   };
 
@@ -174,7 +199,8 @@ export default function LogInwardPage() {
     const found = folderTypes.find(f => f.folder_id === id);
     if (found) {
       setFolderName(found.folder_name);
-      fetchNextInwardNo(id);
+      setInNo('');
+      setIsReserved(false);
     }
   };
 
@@ -183,7 +209,8 @@ export default function LogInwardPage() {
     const found = folderTypes.find(f => f.folder_name === name);
     if (found) {
       setFolderId(found.folder_id);
-      fetchNextInwardNo(found.folder_id);
+      setInNo('');
+      setIsReserved(false);
     }
   };
 
@@ -196,13 +223,15 @@ export default function LogInwardPage() {
     setRemarks('');
     setAssignTo([]);
     setCcSentTo([]);
-    setUploadedFile(null);
+    setUploadedFiles([]);
+    setLinkedDocuments([]);
     setSuccessMsg('');
     setErrorMsg('');
+    setIsReserved(false);
+    setInNo('');
     if (folderTypes.length > 0) {
       setFolderId(folderTypes[0].folder_id);
       setFolderName(folderTypes[0].folder_name);
-      fetchNextInwardNo(folderTypes[0].folder_id);
     }
     if (isModifyMode) {
       navigate('/log-inward');
@@ -212,13 +241,17 @@ export default function LogInwardPage() {
   // FR-064: react-dropzone integration
   const onDrop = (acceptedFiles) => {
     if (acceptedFiles.length > 0) {
-      setUploadedFile(acceptedFiles[0]);
+      setUploadedFiles(prev => [...prev, ...acceptedFiles]);
     }
+  };
+  
+  const removeFile = (index) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: false
+    multiple: true
   });
 
   // Inline List Add helpers (FR-067, FR-068)
@@ -256,13 +289,29 @@ export default function LogInwardPage() {
       return;
     }
 
-    if (!isModifyMode && !uploadedFile) {
-      setErrorMsg('Please upload a scanned document attachment.');
+    // FR-060: If user hasn't clicked "Get Number" yet, reserve now before saving
+    let actualInNo = inNo;
+    if (!isModifyMode && !isReserved) {
+      try {
+        const params = { folder_id: folderId };
+        if (isTargetYearMode) params.target_year = targetYearVal;
+        const reserveRes = await axios.get('/api/inward/next-no', { params });
+        actualInNo = reserveRes.data.inward_no;
+        setInNo(actualInNo);
+        setIsReserved(true);
+      } catch (e) {
+        setErrorMsg(e.response?.data?.detail || 'Failed to reserve inward number before saving.');
+        return;
+      }
+    }
+
+    if (!isModifyMode && uploadedFiles.length === 0) {
+      setErrorMsg('Please upload at least one scanned document attachment.');
       return;
     }
 
     const formData = new FormData();
-    formData.append('inward_no', inNo);
+    formData.append('inward_no', actualInNo);
     formData.append('folder_id', folderId);
     formData.append('receiving_date', receivingDate);
     formData.append('inward_letter_no', inwardLetterNo);
@@ -276,9 +325,21 @@ export default function LogInwardPage() {
 
     assignTo.forEach(uid => formData.append('assign_to', uid));
     ccSentTo.forEach(cid => formData.append('cc_sent_to', cid));
+    
+    if (user?.user_id) {
+      formData.append('actioned_by', user.user_id);
+    }
+    
+    if (isTargetYearMode) {
+      formData.append('target_year', targetYearVal);
+    }
 
-    if (uploadedFile) {
-      formData.append('file', uploadedFile);
+    formData.append('linked_documents', JSON.stringify(linkedDocuments));
+
+    if (uploadedFiles.length > 0) {
+      uploadedFiles.forEach(f => {
+        formData.append('files', f);
+      });
     }
 
     try {
@@ -289,11 +350,10 @@ export default function LogInwardPage() {
         });
         setSuccessMsg(`Inward No. ${inward_no} updated successfully.`);
       } else {
-        // FR-077: Save record
-        await axios.post('/api/inward', formData, {
+        const response = await axios.post('/api/inward', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        setSuccessMsg(`Inward document registered successfully! Assigned Inward No: ${inNo}`);
+        setSuccessMsg(`Inward document registered successfully! Assigned Inward No: ${response.data.inward_no}`);
         handleNew();
       }
     } catch (err) {
@@ -324,18 +384,64 @@ export default function LogInwardPage() {
       {successMsg && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{successMsg}</Alert>}
       {errorMsg && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{errorMsg}</Alert>}
 
-      <Card sx={{ border: '1px solid #D1D5DB' }}>
+      <Card sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3 }}>
         <CardContent sx={{ p: 4 }}>
-          <Grid container spacing={3}>
-            {/* Inward Number - Read Only */}
-            <Grid item xs={12} sm={3}>
+          {isTargetYearMode && (
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              <strong>Previous Year Entry Mode</strong> - You are logging a document for a previous year.
               <TextField
-                fullWidth
-                label="Inward No. (Auto-gen)"
-                value={inNo}
-                InputProps={{ readOnly: true }}
-                disabled
-              />
+                select
+                size="small"
+                value={targetYearVal}
+                onChange={(e) => {
+                  setTargetYearVal(e.target.value);
+                  setIsReserved(false);
+                  setInNo('');
+                }}
+                sx={{ ml: 2, minWidth: 100 }}
+              >
+                {[...Array(10)].map((_, i) => {
+                  const y = new Date().getFullYear() - i;
+                  return <MenuItem key={y} value={y}>{y}</MenuItem>;
+                })}
+              </TextField>
+            </Alert>
+          )}
+          <Grid container spacing={3}>
+            {/* FR-060: Inward Number - Preview with explicit "Get Number" button */}
+            <Grid item xs={12} sm={3}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  label={isReserved || isModifyMode ? 'Inward No.' : 'Inward No.'}
+                  value={inNo || 'Pending...'}
+                  InputProps={{ readOnly: true }}
+                  disabled={isModifyMode}
+                  helperText={!isModifyMode && !isReserved ? 'Click "Get Number" to assign' : ''}
+                  sx={{
+                    '& .MuiInputBase-input': {
+                      fontWeight: 700,
+                      color: isReserved || isModifyMode ? '#2e7d32' : '#b0b0b0',
+                      fontSize: '1.1rem'
+                    }
+                  }}
+                />
+                {!isModifyMode && !isReserved && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={reserveInwardNo}
+                    sx={{ 
+                      minWidth: 110, 
+                      height: 40, 
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Get Number
+                  </Button>
+                )}
+              </Box>
             </Grid>
 
             {/* Date of Receipt (FR-062) */}
@@ -496,7 +602,7 @@ export default function LogInwardPage() {
 
             {/* Assign To (FR-070) */}
             <Grid item xs={12} sm={6}>
-              <Box sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, p: 2 }}>
+              <Box sx={{ border: '1px solid #E8EAED', borderRadius: 2, p: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                   <Typography variant="subtitle2" color="text.secondary">Assign To (Officers):</Typography>
                   <Button size="small" startIcon={<AddIcon />} onClick={() => setAssignDialogOpen(true)}>Add</Button>
@@ -515,7 +621,7 @@ export default function LogInwardPage() {
 
             {/* CC Sent To (FR-073) */}
             <Grid item xs={12} sm={6}>
-              <Box sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, p: 2 }}>
+              <Box sx={{ border: '1px solid #E8EAED', borderRadius: 2, p: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                   <Typography variant="subtitle2" color="text.secondary">CC Sent To:</Typography>
                   <Button size="small" startIcon={<AddIcon />} onClick={() => setCcDialogOpen(true)}>Add CC</Button>
@@ -560,27 +666,77 @@ export default function LogInwardPage() {
               />
             </Grid>
 
+            {/* Linked Documents Autocomplete (FR-171) */}
+            <Grid item xs={12}>
+              <Autocomplete
+                multiple
+                options={availableDocuments}
+                getOptionLabel={(option) => {
+                  if (typeof option === 'string') {
+                    // Try to find the document object if we only have the ID (like when modifying an existing record)
+                    const doc = availableDocuments.find(d => d.id === option);
+                    if (doc) return `${doc.type.toUpperCase()}: ${doc.subject} (${doc.id})`;
+                    return option; // Fallback
+                  }
+                  return `${option.type.toUpperCase()}: ${option.subject} (${option.id})`;
+                }}
+                value={linkedDocuments.map(id => availableDocuments.find(d => d.id === id) || id)}
+                onChange={(event, newValue) => {
+                  setLinkedDocuments(newValue.map(v => typeof v === 'string' ? v : v.id));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    label="Link to existing Documents"
+                    placeholder="Search by ID, Subject, Name"
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <Typography variant="body2" fontWeight="bold">
+                        {option.type.toUpperCase()} - {option.id}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {option.subject} | {option.folder_name} | {option.date}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
+              />
+            </Grid>
+
             {/* Dropzone File Upload Area (FR-064) */}
             <Grid item xs={12}>
               <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                Scanned Attachment Document (Required):
+                Scanned Attachment Document(s) (Required):
               </Typography>
               <div {...getRootProps()} className={`dropzone-container ${isDragActive ? 'dropzone-active' : ''}`}>
                 <input {...getInputProps()} />
                 <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1.5 }} />
-                {uploadedFile ? (
-                  <Typography variant="body1" fontWeight={600} color="secondary.main">
-                    Selected File: {uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
-                  </Typography>
-                ) : (
-                  <Typography variant="body1">
-                    Drag and drop your file here, or click to browse.
-                  </Typography>
-                )}
+                <Typography variant="body1">
+                  Drag and drop your file(s) here, or click to browse. Multiple files allowed.
+                </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                  Supports PDF, DOC, DOCX, and Images (JPG / PNG / JPEG). Max 50 MB.
+                  Supports PDF, DOC, DOCX, and Images (JPG / PNG / JPEG). Max 50 MB per file.
                 </Typography>
               </div>
+              
+              {/* Display list of uploaded files */}
+              {uploadedFiles.length > 0 && (
+                <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {uploadedFiles.map((file, idx) => (
+                    <Chip
+                      key={idx}
+                      label={`${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`}
+                      onDelete={() => removeFile(idx)}
+                      color="secondary"
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+              )}
             </Grid>
 
             {/* Submit Toolbar (FR-077 or FR-078) */}

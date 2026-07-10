@@ -1,15 +1,20 @@
 import datetime
 import os
+import shutil
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 import models
 from database import get_db, get_iodms_settings, save_iodms_settings, get_iodms_root_path
 from routers.auth import get_password_hash
+from filesystem_utils import move_to_trash
+from auth_utils import require_admin, get_current_user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
+address_router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # --- Pydantic Request Models ---
 class UserCreate(BaseModel):
@@ -52,6 +57,10 @@ class SystemSettingsSchema(BaseModel):
     iodms_root_path: str
     cutover_override_date: Optional[str] = None
 
+class AllowedIPCreate(BaseModel):
+    ip_address: str
+    description: Optional[str] = ""
+
 class ApprovalAction(BaseModel):
     action: str  # 'Approve' or 'Reject'
 
@@ -77,11 +86,11 @@ def rename_folders_on_disk(old_id: str, new_id: str):
 
 # --- User Management (9A) ---
 
-# FR-110: List all users
+# FR-110: List all active users
 @router.get("/users")
 def get_users(db: Session = Depends(get_db)):
-    """Retrieves all users for the Admin panel user table."""
-    users = db.query(models.User).order_by(models.User.user_id).all()
+    """Retrieves all non-deleted users for the Admin panel user table."""
+    users = db.query(models.User).filter(models.User.is_deleted == False).order_by(models.User.user_id).all()
     return [{
         "user_id": u.user_id,
         "pb_no": u.pb_no,
@@ -163,6 +172,64 @@ def reset_password(user_id: str, payload: PasswordReset, db: Session = Depends(g
     db.commit()
     return {"message": "Password reset successfully", "success": True}
 
+# FR-115: Soft Delete User
+@router.delete("/users/{user_id}")
+def delete_user(user_id: str, admin_id: str, db: Session = Depends(get_db)):
+    """Soft deletes a user account."""
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user.user_id == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete the default admin account.")
+        
+    user.is_deleted = True
+    user.deleted_at = datetime.datetime.now(datetime.timezone.utc)
+    user.deleted_by = admin_id
+    user.is_active = False # Deactivate on delete
+    db.commit()
+    return {"message": "User deleted successfully", "success": True}
+
+# FR-116: Get Deleted Users
+@router.get("/deleted-users")
+def get_deleted_users(db: Session = Depends(get_db)):
+    """Retrieves all soft-deleted users."""
+    users = db.query(models.User).filter(models.User.is_deleted == True).order_by(models.User.deleted_at.desc()).all()
+    return [{
+        "user_id": u.user_id,
+        "pb_no": u.pb_no,
+        "name": u.name,
+        "role": u.role,
+        "deleted_at": u.deleted_at.isoformat() if u.deleted_at else None,
+        "deleted_by": u.deleted_by
+    } for u in users]
+
+# FR-116: Restore User
+@router.put("/users/{user_id}/restore")
+def restore_user(user_id: str, db: Session = Depends(get_db)):
+    """Restores a soft-deleted user account."""
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user.is_deleted = False
+    user.deleted_at = None
+    user.deleted_by = None
+    user.is_active = True
+    db.commit()
+    return {"message": "User restored successfully", "success": True}
+
+# FR-116: Permanently Delete User
+@router.delete("/users/{user_id}/permanent")
+def permanent_delete_user(user_id: str, db: Session = Depends(get_db)):
+    """Permanently deletes a user from the database."""
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    db.delete(user)
+    db.commit()
+    return {"message": "User permanently deleted", "success": True}
 
 # --- Pending Approvals - Deletion Requests (9B) ---
 
@@ -179,6 +246,46 @@ def get_pending_deletions(db: Session = Depends(get_db)):
         "requested_on": d.requested_on.isoformat(),
         "status": d.status
     } for d in deletions]
+
+# FR-084, FR-095: Get Permanently Deleted (Lost) Numbers
+@router.get("/permanently-deleted")
+def get_permanently_deleted(db: Session = Depends(get_db)):
+    """Retrieves all records with status='Permanently Deleted' from inward and outward registers."""
+    inwards = db.query(models.InwardRegister).filter(models.InwardRegister.status == "Permanently Deleted").all()
+    outwards = db.query(models.OutwardRegister).filter(models.OutwardRegister.status == "Permanently Deleted").all()
+    
+    results = []
+    
+    # Process inwards
+    for r in inwards:
+        folder = db.query(models.FolderType).filter(models.FolderType.folder_id == r.folder_id).first()
+        results.append({
+            "type": "Inward",
+            "number": r.inward_no,
+            "year": r.year,
+            "folder_id": r.folder_id,
+            "folder_name": folder.folder_name if folder else "",
+            "deleted_at": r.deleted_at.isoformat() if r.deleted_at else None,
+            "deleted_by": r.deleted_by,
+        })
+        
+    # Process outwards
+    for r in outwards:
+        folder = db.query(models.FolderType).filter(models.FolderType.folder_id == r.folder_id).first()
+        results.append({
+            "type": "Outward",
+            "number": r.outward_no,
+            "year": r.year,
+            "folder_id": r.folder_id,
+            "folder_name": folder.folder_name if folder else "",
+            "deleted_at": r.deleted_at.isoformat() if r.deleted_at else None,
+            "deleted_by": r.deleted_by,
+        })
+        
+    # Sort by deleted_at descending
+    results.sort(key=lambda x: x["deleted_at"] or "", reverse=True)
+    
+    return results
 
 # FR-121: Approve or Reject Deletion
 @router.put("/pending-deletions/{id}")
@@ -197,7 +304,16 @@ def action_pending_deletion(id: int, payload: ApprovalAction, db: Session = Depe
         table = req.source_table
         record_id = req.record_id
 
-        # 1. Soft-delete files on disk and records in DB
+        # FR-164: Move to TrashBin for 30 days instead of permanent delete
+        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
+        trash_entry = models.TrashBin(
+            source_table=table,
+            deleted_by=req.requested_by,
+            expires_at=expires_at,
+            record_data={} # Will be populated
+        )
+
+        # 1. Move files to Trash and record to TrashBin
         if table == "inward_register":
             # format in record_id is folder_id:year:inward_no
             fid, yr, ino = record_id.split(":")
@@ -207,15 +323,18 @@ def action_pending_deletion(id: int, payload: ApprovalAction, db: Session = Depe
                 models.InwardRegister.inward_no == ino
             ).first()
             if item:
+                trash_entry.record_data = jsonable_encoder(item)
                 if item.attachment_path:
-                    # delete file physically
-                    full_path = os.path.join(get_iodms_root_path(), item.attachment_path)
-                    if os.path.exists(full_path):
-                        try:
-                            os.remove(full_path)
-                        except Exception:
-                            pass
-                db.delete(item)
+                    trash_entry.original_file_path = item.attachment_path
+                    rel_trash, _ = move_to_trash(get_iodms_root_path(), item.attachment_path)
+                    trash_entry.trash_file_path = rel_trash
+                db.add(trash_entry)
+                
+                # FR-084: Keep record to ensure number is lost
+                item.status = "Permanently Deleted"
+                item.deleted_by = req.requested_by
+                item.deleted_at = datetime.datetime.now(datetime.timezone.utc)
+                # Keep other metadata for audit, but it won't show in regular lists since status != Active
 
         elif table == "outward_register":
             # format in record_id is folder_id:year:outward_no
@@ -226,36 +345,40 @@ def action_pending_deletion(id: int, payload: ApprovalAction, db: Session = Depe
                 models.OutwardRegister.outward_no == ono
             ).first()
             if item:
+                trash_entry.record_data = jsonable_encoder(item)
                 if item.document_path:
-                    full_path = os.path.join(get_iodms_root_path(), item.document_path)
-                    if os.path.exists(full_path):
-                        try:
-                            os.remove(full_path)
-                        except Exception:
-                            pass
-                db.delete(item)
+                    trash_entry.original_file_path = item.document_path
+                    rel_trash, _ = move_to_trash(get_iodms_root_path(), item.document_path)
+                    trash_entry.trash_file_path = rel_trash
+                db.add(trash_entry)
+                
+                # FR-095: Keep record to ensure number is lost
+                item.status = "Permanently Deleted"
+                item.deleted_by = req.requested_by
+                item.deleted_at = datetime.datetime.now(datetime.timezone.utc)
 
         elif table == "draft_files":
             item = db.query(models.DraftFile).filter(models.DraftFile.draft_id == int(record_id)).first()
             if item:
+                trash_entry.record_data = jsonable_encoder(item)
                 if item.file_path:
-                    full_path = os.path.join(get_iodms_root_path(), item.file_path)
-                    if os.path.exists(full_path):
-                        try:
-                            os.remove(full_path)
-                        except Exception:
-                            pass
+                    trash_entry.original_file_path = item.file_path
+                    rel_trash, _ = move_to_trash(get_iodms_root_path(), item.file_path)
+                    trash_entry.trash_file_path = rel_trash
+                db.add(trash_entry)
                 db.delete(item)
 
         elif table == "address_book":
             item = db.query(models.AddressBook).filter(models.AddressBook.address_id == int(record_id)).first()
             if item:
+                trash_entry.record_data = jsonable_encoder(item)
+                db.add(trash_entry)
                 db.delete(item)
 
         # Mark request as Approved
         req.status = "Approved"
         db.commit()
-        return {"message": "Record permanently deleted.", "success": True}
+        return {"message": "Record moved to Trash Bin for 30 days.", "success": True}
 
     elif payload.action == "Reject":
         # Mark request as Rejected (restores normal visibility)
@@ -264,6 +387,93 @@ def action_pending_deletion(id: int, payload: ApprovalAction, db: Session = Depe
         return {"message": "Deletion request rejected. Record restored.", "success": True}
 
     raise HTTPException(status_code=400, detail="Invalid action. Use Approve or Reject")
+
+
+# --- FR-164/FR-165: Trash Bin Management ---
+
+@router.get("/trash-bin")
+def get_trash_bin(db: Session = Depends(get_db)):
+    """Lists all soft-deleted records currently in the 30-day recycle bin, purging expired ones first."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    
+    # Lazily purge expired items
+    expired_items = db.query(models.TrashBin).filter(
+        models.TrashBin.expires_at < now,
+        models.TrashBin.is_permanently_deleted == False
+    ).all()
+    
+    for item in expired_items:
+        if item.trash_file_path:
+            full_path = os.path.join(get_iodms_root_path(), item.trash_file_path)
+            if os.path.exists(full_path):
+                os.remove(full_path)
+        item.is_permanently_deleted = True
+    
+    if expired_items:
+        db.commit()
+
+    items = db.query(models.TrashBin).filter(models.TrashBin.is_permanently_deleted == False).order_by(models.TrashBin.trashed_at.desc()).all()
+    return [{
+        "id": i.id,
+        "source_table": i.source_table,
+        "deleted_by": i.deleted_by,
+        "trashed_at": i.trashed_at.isoformat(),
+        "expires_at": i.expires_at.isoformat(),
+        "record_id": i.record_data.get("inward_no") or i.record_data.get("outward_no") or i.record_data.get("draft_id") or i.record_data.get("address_id", "Unknown")
+    } for i in items]
+
+@router.put("/trash-bin/{id}/restore")
+def restore_from_trash(id: int, db: Session = Depends(get_db)):
+    """Restores a record from the Trash Bin back to its original table."""
+    import shutil
+    trash_entry = db.query(models.TrashBin).filter(models.TrashBin.id == id).first()
+    if not trash_entry:
+        raise HTTPException(status_code=404, detail="Trash entry not found")
+        
+    table = trash_entry.source_table
+    data = trash_entry.record_data
+    
+    # 1. Restore file physically if it exists
+    if trash_entry.trash_file_path and trash_entry.original_file_path:
+        trash_full = os.path.join(get_iodms_root_path(), trash_entry.trash_file_path)
+        orig_full = os.path.join(get_iodms_root_path(), trash_entry.original_file_path)
+        if os.path.exists(trash_full):
+            os.makedirs(os.path.dirname(orig_full), exist_ok=True)
+            shutil.move(trash_full, orig_full)
+            
+    # 2. Insert record back to DB
+    if table == "inward_register":
+        new_item = models.InwardRegister(**{k: v for k, v in data.items() if k not in ["created_at", "updated_at"]})
+        db.add(new_item)
+    elif table == "outward_register":
+        new_item = models.OutwardRegister(**{k: v for k, v in data.items() if k not in ["created_at", "updated_at"]})
+        db.add(new_item)
+    elif table == "draft_files":
+        new_item = models.DraftFile(**{k: v for k, v in data.items() if k not in ["created_on", "updated_at", "locked_at"]})
+        db.add(new_item)
+    elif table == "address_book":
+        new_item = models.AddressBook(**{k: v for k, v in data.items()})
+        db.add(new_item)
+        
+    db.delete(trash_entry)
+    db.commit()
+    return {"message": "Record restored successfully.", "success": True}
+
+@router.delete("/trash-bin/{id}")
+def delete_from_trash(id: int, db: Session = Depends(get_db)):
+    """Permanently deletes a record and its physical file from the Trash Bin."""
+    trash_entry = db.query(models.TrashBin).filter(models.TrashBin.id == id).first()
+    if not trash_entry:
+        raise HTTPException(status_code=404, detail="Trash entry not found")
+        
+    if trash_entry.trash_file_path:
+        full_path = os.path.join(get_iodms_root_path(), trash_entry.trash_file_path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
+            
+    trash_entry.is_permanently_deleted = True
+    db.commit()
+    return {"message": "Record permanently deleted.", "success": True}
 
 
 # --- Pending Approvals - Profile Edits (9C) ---
@@ -538,7 +748,7 @@ def update_settings(payload: SystemSettingsSchema):
 # --- Address Book Management (Module 8) ---
 
 # FR-100, FR-101: Retrieve Address Book entries
-@router.get("/address-book")
+@address_router.get("/address-book")
 def get_address_book(
     page: int = 1,
     limit: int = 20,
@@ -558,7 +768,12 @@ def get_address_book(
         models.PendingDeletion.source_table == "address_book",
         models.PendingDeletion.status == "Pending"
     ).all()
-    pending_ids = [int(pd.record_id) for pd in pending_deletes]
+    pending_ids = []
+    for pd in pending_deletes:
+        try:
+            pending_ids.append(int(pd.record_id))
+        except ValueError:
+            pass
 
     query = db.query(models.AddressBook)
     if pending_ids:
@@ -599,7 +814,7 @@ def get_address_book(
     }
 
 # FR-102: Add Address Entry
-@router.post("/address-book")
+@address_router.post("/address-book")
 def add_address_entry(payload: AddressCreate, db: Session = Depends(get_db)):
     """Creates a new contact address.
     
@@ -622,7 +837,7 @@ def add_address_entry(payload: AddressCreate, db: Session = Depends(get_db)):
     return {"message": "Address added successfully", "address_id": new_entry.address_id, "success": True}
 
 # FR-104: Edit Address Entry
-@router.put("/address-book/{id}")
+@address_router.put("/address-book/{id}")
 def edit_address_entry(id: int, payload: AddressCreate, db: Session = Depends(get_db)):
     """Modifies a contact's details directly."""
     entry = db.query(models.AddressBook).filter(models.AddressBook.address_id == id).first()
@@ -641,7 +856,7 @@ def edit_address_entry(id: int, payload: AddressCreate, db: Session = Depends(ge
     return {"message": "Address updated successfully", "success": True}
 
 # FR-104: Request Delete Address Entry
-@router.delete("/address-book/{id}")
+@address_router.delete("/address-book/{id}")
 def delete_address_entry(id: int, requester_id: str, db: Session = Depends(get_db)):
     """Submits a deletion request for a contact instead of deleting it immediately.
     
@@ -671,3 +886,102 @@ def delete_address_entry(id: int, requester_id: str, db: Session = Depends(get_d
     db.add(new_del)
     db.commit()
     return {"message": "Deletion requested. Awaiting Admin approval.", "success": True}
+
+# --- Template Management (FR-143) ---
+
+@address_router.get("/templates")
+def get_templates(db: Session = Depends(get_db)):
+    """Retrieves a list of all uploaded templates."""
+    templates = db.query(models.DocumentTemplate).order_by(models.DocumentTemplate.uploaded_on.desc()).all()
+    return templates
+
+@router.post("/templates")
+def upload_template(
+    name: str = Form(...),
+    template_type: str = Form(...),
+    uploaded_by: str = Form("unknown"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Uploads a new .docx template."""
+    if not file.filename.endswith('.docx'):
+        raise HTTPException(status_code=400, detail="Only .docx files are allowed")
+
+    # Create Templates directory if not exists
+    relative_folder = "Templates"
+    full_folder_path = os.path.join(get_iodms_root_path(), relative_folder)
+    os.makedirs(full_folder_path, exist_ok=True)
+
+    # Save file securely
+    safe_name = "".join([c for c in file.filename if c.isalpha() or c.isdigit() or c in (' ', '.', '_', '-')]).rstrip()
+    filename = f"{int(datetime.datetime.now().timestamp())}_{safe_name}"
+    relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
+    full_file_path = os.path.join(get_iodms_root_path(), relative_path)
+
+    try:
+        with open(full_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+    new_template = models.DocumentTemplate(
+        name=name,
+        template_type=template_type,
+        file_path=relative_path,
+        uploaded_by=uploaded_by
+    )
+    db.add(new_template)
+    db.commit()
+    return {"message": "Template uploaded successfully", "success": True}
+
+@router.delete("/templates/{template_id}")
+def delete_template(template_id: int, db: Session = Depends(get_db)):
+    """Deletes a document template from database and filesystem."""
+    template = db.query(models.DocumentTemplate).filter(models.DocumentTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    full_path = os.path.join(get_iodms_root_path(), template.file_path)
+    if os.path.exists(full_path):
+        try:
+            os.remove(full_path)
+        except:
+            pass # Continue to delete from DB even if file deletion fails
+
+    db.delete(template)
+    db.commit()
+    return {"message": "Template deleted successfully", "success": True}
+
+# --- IP Whitelist (FR-172) ---
+
+@router.get("/allowed-ips")
+def get_allowed_ips(db: Session = Depends(get_db)):
+    """Retrieves all whitelisted IP addresses."""
+    ips = db.query(models.AllowedIP).all()
+    return ips
+
+@router.post("/allowed-ips")
+def create_allowed_ip(payload: AllowedIPCreate, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Adds a new allowed IP address or wildcard."""
+    existing = db.query(models.AllowedIP).filter(models.AllowedIP.ip_address == payload.ip_address).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="This IP address is already whitelisted.")
+    
+    new_ip = models.AllowedIP(
+        ip_address=payload.ip_address,
+        description=payload.description,
+        added_by=current_user["user_id"]
+    )
+    db.add(new_ip)
+    db.commit()
+    return {"message": "IP address added to whitelist.", "success": True}
+
+@router.delete("/allowed-ips/{ip_id}")
+def delete_allowed_ip(ip_id: int, db: Session = Depends(get_db)):
+    """Deletes an allowed IP address."""
+    record = db.query(models.AllowedIP).filter(models.AllowedIP.id == ip_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="IP address not found.")
+    db.delete(record)
+    db.commit()
+    return {"message": "IP address removed from whitelist.", "success": True}

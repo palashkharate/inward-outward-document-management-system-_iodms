@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import {
   Box,
@@ -20,7 +20,8 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
-  Alert
+  Alert,
+  Autocomplete
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -35,23 +36,31 @@ export default function ComposeOutwardPage() {
   const { folder_id, year, outward_no } = useParams();
   const isModifyMode = !!outward_no;
 
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isTargetYearMode = searchParams.get('target_year') === 'true';
+
   // Form Fields
+  const [targetYearVal, setTargetYearVal] = useState(new Date().getFullYear() - 1);
   const [outNo, setOutNo] = useState('');
   const [subject, setSubject] = useState('');
   const [preparedBy, setPreparedBy] = useState(user?.user_id || '');
   const [dateVal, setDateVal] = useState(new Date().toISOString().split('T')[0]);
   const [folderId, setFolderId] = useState('');
   const [folderName, setFolderName] = useState('');
-  const [templateType, setTemplateType] = useState('Fax_With_GM_Sig');
+  const [templateType, setTemplateType] = useState('');
   const [addressGroup, setAddressGroup] = useState('');
   const [addressTo, setAddressTo] = useState('');
   const [remarks, setRemarks] = useState('');
   const [ccList, setCcList] = useState([]); // selected CC address IDs
+  const [linkedDocuments, setLinkedDocuments] = useState([]);
+  const [availableDocuments, setAvailableDocuments] = useState([]);
 
   // Master Lists (fetched from API)
   const [usersList, setUsersList] = useState([]);
   const [folderTypes, setFolderTypes] = useState([]);
   const [addressGroups, setAddressGroups] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [contacts, setContacts] = useState([]); // all address book contacts
 
   // UI state
@@ -59,28 +68,40 @@ export default function ComposeOutwardPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  // FR-055: Track whether outward number has been explicitly reserved
+  const [isReserved, setIsReserved] = useState(false);
 
   // Fetch initial master data
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [usersRes, foldersRes, groupsRes, addrRes] = await Promise.all([
+        const [usersRes, foldersRes, groupsRes, addrRes, templatesRes] = await Promise.all([
           axios.get('/api/admin/users'),
           axios.get('/api/admin/folder-types'),
           axios.get('/api/admin/address-groups'),
-          axios.get('/api/admin/address-book?limit=1000') // fetch all contacts
+          axios.get('/api/admin/address-book?limit=1000'), // fetch all contacts
+          axios.get('/api/admin/templates')
         ]);
         setUsersList(usersRes.data);
         setFolderTypes(foldersRes.data);
         setAddressGroups(groupsRes.data);
         setContacts(addrRes.data.results);
+        setTemplates(templatesRes.data);
+        
+        const docsRes = await axios.get('/api/dashboard/search-documents?query=');
+        setAvailableDocuments(docsRes.data);
+        
+        if (templatesRes.data.length > 0 && !isModifyMode) {
+           setTemplateType(templatesRes.data[0].id.toString());
+        }
 
         // Pre-select first folder if available
         if (foldersRes.data.length > 0 && !isModifyMode) {
           const first = foldersRes.data[0];
           setFolderId(first.folder_id);
           setFolderName(first.folder_name);
-          fetchReservedNo(first.folder_id);
+          setOutNo('');
+          setIsReserved(false);
         }
       } catch (e) {
         setErrorMsg('Failed to load initial form lists.');
@@ -104,11 +125,13 @@ export default function ComposeOutwardPage() {
             setOutNo(match.outward_no);
             setFolderId(match.folder_id);
             setFolderName(match.folder_name);
-            setSubject(match.subject);
-            setPreparedBy(match.prepared_by);
-            setDateVal(match.issuing_date);
-            setRemarks(match.remarks);
-            setTemplateType(match.template_type);
+            setSubject(match.subject || '');
+            setPreparedBy(match.prepared_by || '');
+            setRemarks(match.remarks || '');
+            setTemplateType(match.template_type || '');
+            setAddressTo(match.address_to.length > 0 ? match.address_to[0] : '');
+            setCcList(match.cc_to || []);
+            setLinkedDocuments(match.linked_documents || []);
             
             // Map names back to IDs if contacts exist
             const fetchedContacts = await axios.get('/api/admin/address-book?limit=1000');
@@ -139,16 +162,27 @@ export default function ComposeOutwardPage() {
     }
   }, [isModifyMode, folder_id, year, outward_no]);
 
-  // Fetch reserved number (FR-055)
-  const fetchReservedNo = async (fid) => {
-    if (isModifyMode) return;
+  // FR-055: Actually reserve the number (called when officer clicks "Get Number")
+  const reserveOutwardNo = async () => {
+    if (isModifyMode || isReserved) return;
     try {
-      const response = await axios.get('/api/outward/next-no', {
-        params: { folder_id: fid }
-      });
+      const params = { folder_id: folderId };
+      if (isTargetYearMode) {
+        params.target_year = targetYearVal;
+      }
+      const response = await axios.get('/api/outward/next-no', { params });
       setOutNo(response.data.outward_no);
+      setIsReserved(true);
+      setErrorMsg('');
+      setSuccessMsg(`Outward No. ${response.data.outward_no} has been reserved for you.`);
     } catch (e) {
       console.error(e);
+      if (e.response && e.response.status === 400) {
+        setErrorMsg(e.response.data.detail);
+        setOutNo('');
+      } else {
+        setErrorMsg('Failed to reserve Outward number. Please try again.');
+      }
     }
   };
 
@@ -158,7 +192,8 @@ export default function ComposeOutwardPage() {
     const found = folderTypes.find(f => f.folder_id === id);
     if (found) {
       setFolderName(found.folder_name);
-      fetchReservedNo(id);
+      setOutNo('');
+      setIsReserved(false);
     }
   };
 
@@ -167,7 +202,8 @@ export default function ComposeOutwardPage() {
     const found = folderTypes.find(f => f.folder_name === name);
     if (found) {
       setFolderId(found.folder_id);
-      fetchReservedNo(found.folder_id);
+      setOutNo('');
+      setIsReserved(false);
     }
   };
 
@@ -175,15 +211,18 @@ export default function ComposeOutwardPage() {
   const handleNew = () => {
     setSubject('');
     setRemarks('');
+    setTemplateType(templates.length > 0 ? templates[0].id.toString() : '');
     setAddressGroup('');
     setAddressTo('');
     setCcList([]);
+    setLinkedDocuments([]);
     setSuccessMsg('');
     setErrorMsg('');
+    setIsReserved(false);
+    setOutNo('');
     if (folderTypes.length > 0) {
       setFolderId(folderTypes[0].folder_id);
       setFolderName(folderTypes[0].folder_name);
-      fetchReservedNo(folderTypes[0].folder_id);
     }
     if (isModifyMode) {
       navigate('/compose-outward');
@@ -218,9 +257,29 @@ export default function ComposeOutwardPage() {
       setErrorMsg('Subject, Folder ID and Address To are required.');
       return;
     }
+    
+    // FR-055: If user hasn't clicked "Get Number" yet, reserve now before saving
+    let actualOutNo = outNo;
+    if (!isModifyMode && !isReserved) {
+      try {
+        const params = { folder_id: folderId };
+        if (isTargetYearMode) params.target_year = targetYearVal;
+        const reserveRes = await axios.get('/api/outward/next-no', { params });
+        actualOutNo = reserveRes.data.outward_no;
+        setOutNo(actualOutNo);
+        setIsReserved(true);
+      } catch (e) {
+        if (e.response && e.response.status === 400) {
+          setErrorMsg(e.response.data.detail);
+        } else {
+          setErrorMsg('Failed to reserve Outward number before saving.');
+        }
+        return;
+      }
+    }
 
     const payload = {
-      outward_no: outNo,
+      outward_no: actualOutNo,
       folder_id: folderId,
       issuing_date: dateVal,
       address_to: [addressTo],
@@ -229,7 +288,9 @@ export default function ComposeOutwardPage() {
       remarks: remarks,
       prepared_by: preparedBy,
       actioned_by: user.user_id,
-      template_type: templateType
+      template_type: templateType,
+      linked_documents: linkedDocuments,
+      target_year: isTargetYearMode ? targetYearVal : undefined
     };
 
     try {
@@ -239,8 +300,8 @@ export default function ComposeOutwardPage() {
         setSuccessMsg(`Outward No. ${outward_no} modified successfully.`);
       } else {
         // FR-042: Save Draft
-        await axios.post('/api/outward/draft', payload);
-        setSuccessMsg(`Draft document for Outward No. ${outNo} generated successfully.`);
+        const response = await axios.post('/api/outward/draft', payload);
+        setSuccessMsg(`Draft document for Outward No. ${response.data.outward_no} generated successfully.`);
         // Reset form after successful save (FR-043)
         handleNew();
       }
@@ -272,18 +333,64 @@ export default function ComposeOutwardPage() {
       {successMsg && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{successMsg}</Alert>}
       {errorMsg && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{errorMsg}</Alert>}
 
-      <Card sx={{ border: '1px solid #D1D5DB' }}>
+      <Card sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3 }}>
         <CardContent sx={{ p: 4 }}>
+          {isTargetYearMode && (
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              <strong>Previous Year Entry Mode</strong> - You are composing a draft for a previous year.
+              <TextField
+                select
+                size="small"
+                value={targetYearVal}
+                onChange={(e) => {
+                  setTargetYearVal(e.target.value);
+                  setIsReserved(false);
+                  setOutNo('');
+                }}
+                sx={{ ml: 2, minWidth: 100 }}
+              >
+                {[...Array(10)].map((_, i) => {
+                  const y = new Date().getFullYear() - i;
+                  return <MenuItem key={y} value={y}>{y}</MenuItem>;
+                })}
+              </TextField>
+            </Alert>
+          )}
           <Grid container spacing={3}>
             {/* Outward Number - Read Only */}
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Outward No. (Reserved)"
-                value={outNo}
-                InputProps={{ readOnly: true }}
-                disabled
-              />
+            <Grid item xs={12} sm={3}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  label={isReserved || isModifyMode ? 'Outward No.' : 'Outward No.'}
+                  value={outNo || 'Pending...'}
+                  InputProps={{ readOnly: true }}
+                  disabled={isModifyMode}
+                  helperText={!isModifyMode && !isReserved ? 'Click "Get Number" to assign' : ''}
+                  sx={{
+                    '& .MuiInputBase-input': {
+                      fontWeight: 700,
+                      color: isReserved || isModifyMode ? '#2e7d32' : '#b0b0b0',
+                      fontSize: '1.1rem'
+                    }
+                  }}
+                />
+                {!isModifyMode && !isReserved && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={reserveOutwardNo}
+                    sx={{ 
+                      minWidth: 110, 
+                      height: 40, 
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Get Number
+                  </Button>
+                )}
+              </Box>
             </Grid>
 
             {/* Date Picker (FR-033) */}
@@ -358,9 +465,9 @@ export default function ComposeOutwardPage() {
                 value={templateType}
                 onChange={(e) => setTemplateType(e.target.value)}
               >
-                <MenuItem value="Fax_With_GM_Sig">Fax / Outside Letter (With GM Signature)</MenuItem>
-                <MenuItem value="Fax_Without_GM_Sig">Fax / Outside Letter (Without GM Signature)</MenuItem>
-                <MenuItem value="Internal_Letter">Internal Letter</MenuItem>
+                {templates.map(t => (
+                  <MenuItem key={t.id} value={t.id.toString()}>{t.name} ({t.template_type})</MenuItem>
+                ))}
               </TextField>
             </Grid>
 
@@ -419,7 +526,7 @@ export default function ComposeOutwardPage() {
             {/* Selected Address Display Card (FR-039) */}
             {selectedContactDetails && (
               <Grid item xs={12}>
-                <Card variant="outlined" sx={{ bgcolor: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                <Card variant="outlined" sx={{ bgcolor: '#F8F9FA', border: '1px solid #E8EAED', borderRadius: 2 }}>
                   <CardContent sx={{ p: 2 }}>
                     <Typography variant="subtitle2" color="primary" fontWeight={600} gutterBottom>
                       Delivery Address Details:
@@ -440,7 +547,7 @@ export default function ComposeOutwardPage() {
 
             {/* CC Multi-select Chips (FR-040) */}
             <Grid item xs={12}>
-              <Box sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, p: 2 }}>
+              <Box sx={{ border: '1px solid #E8EAED', borderRadius: 2, p: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Copy To (CC Recipients):
@@ -474,6 +581,46 @@ export default function ComposeOutwardPage() {
                   )}
                 </Box>
               </Box>
+            </Grid>
+
+            {/* Linked Documents Autocomplete (FR-171) */}
+            <Grid item xs={12}>
+              <Autocomplete
+                multiple
+                options={availableDocuments}
+                getOptionLabel={(option) => {
+                  if (typeof option === 'string') {
+                    const doc = availableDocuments.find(d => d.id === option);
+                    if (doc) return `${doc.type.toUpperCase()}: ${doc.subject} (${doc.id})`;
+                    return option;
+                  }
+                  return `${option.type.toUpperCase()}: ${option.subject} (${option.id})`;
+                }}
+                value={linkedDocuments.map(id => availableDocuments.find(d => d.id === id) || id)}
+                onChange={(event, newValue) => {
+                  setLinkedDocuments(newValue.map(v => typeof v === 'string' ? v : v.id));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    label="Link to existing Documents"
+                    placeholder="Search by ID, Subject, Name"
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <Typography variant="body2" fontWeight="bold">
+                        {option.type.toUpperCase()} - {option.id}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {option.subject} | {option.folder_name} | {option.date}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
+              />
             </Grid>
 
             {/* Remarks (FR-041) */}

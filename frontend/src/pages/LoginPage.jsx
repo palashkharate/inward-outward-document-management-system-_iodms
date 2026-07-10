@@ -64,28 +64,59 @@ export default function LoginPage() {
     <Box
       sx={{
         width: '100%',
-        maxWidth: 420,
-        mt: 4,
+        minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, rgba(15,23,42,0.85), rgba(26,115,232,0.6)), url("/images/su30mki.jpg")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
       }}
     >
-      {/* Visual Header (wow factor) */}
-      <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-        <Avatar sx={{ m: 1, bgcolor: 'primary.main', width: 56, height: 56 }}>
-          <LockOutlinedIcon sx={{ fontSize: 30 }} />
-        </Avatar>
-        <Typography variant="h4" fontWeight={800} letterSpacing={-0.5} sx={{ mt: 1 }}>
-          HAL IODMS
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          Inward/Outward Document Management System
-        </Typography>
-      </Box>
+      <Box
+        className="page-enter-active"
+        sx={{
+          width: '100%',
+          maxWidth: 420,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}
+      >
+        {/* Visual Header (wow factor) */}
+        <Box sx={{ mb: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <Box 
+            component="img" 
+            src="/images/hal_logo.png" 
+            sx={{ 
+              width: 90, 
+              height: 90, 
+              objectFit: 'contain', 
+              mb: 2,
+              filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.2))'
+            }} 
+            alt="HAL Logo" 
+          />
+          <Typography variant="h4" fontWeight={800} letterSpacing={-0.5} color="white">
+            HAL IODMS
+          </Typography>
+          <Typography variant="body2" color="rgba(255,255,255,0.7)" sx={{ mt: 0.5 }}>
+            Inward/Outward Document Management System
+          </Typography>
+        </Box>
 
-      {/* Main Login Card */}
-      <Card sx={{ width: '100%', border: '1px solid #D1D5DB', boxShadow: 3 }}>
+      {/* Main Login Card - Glassmorphism */}
+      <Card 
+        sx={{ 
+          width: '100%', 
+          background: 'rgba(255, 255, 255, 0.92)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255,255,255,0.4)', 
+          boxShadow: '0 16px 48px rgba(0,0,0,0.2)', 
+          borderRadius: 4 
+        }}
+      >
         <CardContent sx={{ p: 4 }}>
           {error && (
             <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
@@ -98,6 +129,7 @@ export default function LoginPage() {
               margin="normal"
               required
               fullWidth
+              size="medium"
               id="userId"
               label="User ID"
               name="userId"
@@ -112,6 +144,7 @@ export default function LoginPage() {
               margin="normal"
               required
               fullWidth
+              size="medium"
               name="password"
               label="Password"
               type="password"
@@ -120,7 +153,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={{ mb: 3 }}
+              sx={{ mb: 4 }}
             />
             <Button
               type="submit"
@@ -129,12 +162,16 @@ export default function LoginPage() {
               size="large"
               sx={{
                 py: 1.5,
-                borderRadius: 2.5,
+                borderRadius: '100px',
+                background: 'linear-gradient(135deg, #1A73E8, #1557B0)',
                 fontWeight: 600,
                 fontSize: '1rem',
-                boxShadow: '0 4px 14px rgba(11, 37, 69, 0.3)',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                boxShadow: '0 4px 14px rgba(26, 115, 232, 0.3)',
                 '&:hover': {
-                  boxShadow: '0 6px 20px rgba(11, 37, 69, 0.5)',
+                  background: 'linear-gradient(135deg, #1557B0, #1A73E8)',
+                  boxShadow: '0 6px 20px rgba(26, 115, 232, 0.5)',
                 },
               }}
             >
@@ -146,8 +183,8 @@ export default function LoginPage() {
 
       {/* FR-000: Auditor View Button */}
       <Button
-        variant="text"
-        color="secondary"
+        variant="outlined"
+        color="inherit"
         onClick={() => navigate('/auditor')}
         sx={{
           mt: 4,
@@ -155,19 +192,23 @@ export default function LoginPage() {
           fontSize: '0.85rem',
           letterSpacing: 0.5,
           textTransform: 'uppercase',
-          color: '#E53935',
+          color: 'rgba(255,255,255,0.9)',
+          borderColor: 'rgba(255,255,255,0.3)',
+          borderRadius: 2,
           '&:hover': {
-            bgcolor: 'rgba(229, 57, 53, 0.08)',
+            borderColor: 'rgba(255,255,255,0.8)',
+            background: 'rgba(255,255,255,0.1)',
           },
         }}
       >
         View Registers (Auditor)
       </Button>
 
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 4, textAlign: 'center' }}>
+      <Typography variant="caption" sx={{ mt: 4, textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
         HAL AURDC, Nashik. DEA Office Air-Gapped Environment.<br />
         Protected under the Official Secrets Act, 1923.
       </Typography>
+      </Box>
     </Box>
   );
 }

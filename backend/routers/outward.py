@@ -1,8 +1,11 @@
 import datetime
 import os
 import shutil
+import json
+import uuid
+from .link_utils import sync_bidirectional_links
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -11,8 +14,9 @@ import models
 from database import get_db, get_iodms_root_path, get_iodms_settings
 from routers.inward import get_effective_year
 import filesystem_utils
+from auth_utils import get_current_user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # --- Pydantic Request Models ---
 class DraftCreate(BaseModel):
@@ -26,11 +30,34 @@ class DraftCreate(BaseModel):
     prepared_by: str
     actioned_by: str
     template_type: str
+    target_year: Optional[int] = None
+    linked_documents: Optional[List[str]] = []
 
 class DraftLockAction(BaseModel):
     user_id: str
 
 # --- Helper functions ---
+
+def check_draft_locks(db: Session):
+    """Auto-expires locks older than 30 minutes."""
+    thirty_mins_ago = datetime.datetime.now() - datetime.timedelta(minutes=30)
+    db.query(models.DraftFile).filter(
+        models.DraftFile.is_locked == True,
+        models.DraftFile.locked_at < thirty_mins_ago
+    ).update({"is_locked": False, "locked_by": None, "locked_at": None})
+    db.commit()
+
+def log_edit(db: Session, record_type: str, record_id: str, action: str, user_id: str, changes: dict = None):
+    """Helper to add an entry to the EditLog."""
+    log = models.EditLog(
+        record_type=record_type,
+        record_id=str(record_id),
+        action=action,
+        changes=changes,
+        edited_by=user_id
+    )
+    db.add(log)
+    db.commit()
 
 # FR-055: Pre-assign and reserve Outward number
 def get_next_outward_no(folder_id: str, year: int, db: Session) -> str:
@@ -70,47 +97,56 @@ def get_next_outward_no(folder_id: str, year: int, db: Session) -> str:
 
 # FR-042: Generate Word document draft with placeholder tags
 def create_draft_document(filepath: str, data: dict, db: Session):
-    """Creates a basic formatted text file representing a MS Word Document.
+    """Creates a document from template or fallback basic formatted text file.
     
     Implements:
-    - FR-042: Generates a document containing form metadata and template placeholder tags.
+    - FR-143: Generates a document using uploaded DocumentTemplates.
     """
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     
-    # Fetch details of primary address
+    template_id = data.get('template_type')
+    try:
+        template = db.query(models.DocumentTemplate).filter(models.DocumentTemplate.id == int(template_id)).first()
+    except:
+        template = None
+
+    if template:
+        src_path = os.path.join(get_iodms_root_path(), template.file_path)
+        if os.path.exists(src_path):
+            shutil.copyfile(src_path, filepath)
+            return
+            
+    # Fallback to basic text format
     address_str = ""
-    if data["address_to"]:
+    if data.get("address_to"):
         addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == data["address_to"][0]).first()
         if addr:
             address_str = f"{addr.name}\n{addr.designation or ''}\n{addr.organisation or ''}\n{addr.address_line_1 or ''}\n{addr.address_line_2 or ''}"
             
-    # CC List names
     cc_names = []
-    for cc_id in data["cc_to"]:
-        addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == cc_id).first()
-        if addr:
-            cc_names.append(addr.name)
+    if data.get("cc_to"):
+        for cc_id in data["cc_to"]:
+            addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == cc_id).first()
+            if addr:
+                cc_names.append(addr.name)
     cc_str = ", ".join(cc_names)
 
-    # Document contents formatted as plain text
     content = f"""======================================================
 HAL AURDC, NASHIK - DESIGN & ENGINEERING ACTIVITY (DEA)
 ======================================================
-Outward Reference No: {data['outward_no']}
-Date: {data['issuing_date']}
-Folder ID: {data['folder_id']}
-Template: {data['template_type']}
-Prepared By: {data['prepared_by']}
+Outward Reference No: {data.get('outward_no')}
+Date: {data.get('issuing_date')}
+Folder ID: {data.get('folder_id')}
+Template ID: {data.get('template_type')}
+Prepared By: {data.get('prepared_by')}
 
 TO:
 {address_str}
 
 CC: {cc_str}
 
-SUBJECT: {data['subject']}
+SUBJECT: {data.get('subject')}
 
-------------------------------------------------------
-[TEMPLATE BODY: {data['template_type']}]
 ------------------------------------------------------
 Dear Sir/Madam,
 
@@ -119,7 +155,7 @@ This is a draft document. You can modify the text below:
 [Place your letter body contents here...]
 
 ------------------------------------------------------
-Remarks: {data['remarks']}
+Remarks: {data.get('remarks')}
 ======================================================
 """
     with open(filepath, "w", encoding="utf-8") as f:
@@ -130,15 +166,75 @@ Remarks: {data['remarks']}
 
 # FR-055: Reserve Outward No.
 @router.get("/next-no")
-def get_next_no(folder_id: str, db: Session = Depends(get_db)):
+def get_next_no(
+    folder_id: str, 
+    target_year: Optional[int] = None, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Reserves the next available Outward number.
     
     Implements:
     - FR-055: Pre-assigns the Outward No. when Compose Outward opens.
+    - FR-055: Prevents an officer from allocating a new number if they already have an undispatched draft.
+    - FR-144: Support target_year override for previous year entries.
     """
-    year = get_effective_year()
-    next_no = get_next_outward_no(folder_id, year, db)
-    return {"outward_no": next_no, "year": year}
+    user_id = current_user.get("user_id")
+    
+    # Check if the user already has a draft that is NOT pending deletion
+    existing_drafts = db.query(models.DraftFile).filter(models.DraftFile.actioned_by == user_id).all()
+    if existing_drafts:
+        # Check pending deletions
+        pending_deletes = db.query(models.PendingDeletion).filter(
+            models.PendingDeletion.source_table == "draft_files",
+            models.PendingDeletion.status == "Pending"
+        ).all()
+        pending_ids = []
+        for pd in pending_deletes:
+            try:
+                pending_ids.append(int(pd.record_id))
+            except ValueError:
+                pass
+        
+        has_active_draft = False
+        for draft in existing_drafts:
+            if draft.draft_id not in pending_ids:
+                has_active_draft = True
+                break
+                
+        if has_active_draft:
+            raise HTTPException(
+                status_code=400,
+                detail="You already have an active undispatched draft. You must dispatch or discard it before creating a new one."
+            )
+
+    year = target_year if target_year else get_effective_year()
+    
+    # Retry loop to reserve the number
+    for attempt in range(3):
+        next_no = get_next_outward_no(folder_id, year, db)
+        reserved_draft = models.DraftFile(
+            file_path="[Reserved]",
+            outward_no=next_no,
+            folder_id=folder_id,
+            issuing_date=datetime.date.today(),
+            address_to=[],
+            cc_to=[],
+            subject="[Reserved Draft]",
+            remarks="",
+            prepared_by="system",
+            actioned_by="system",
+            template_type="Reserved",
+            year=year
+        )
+        try:
+            db.add(reserved_draft)
+            db.commit()
+            return {"outward_no": next_no, "year": year}
+        except Exception:
+            db.rollback()
+            
+    raise HTTPException(status_code=500, detail="Failed to reserve outward number due to high concurrency. Please try again.")
 
 
 # FR-042: Save Draft
@@ -148,20 +244,39 @@ def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
     
     Implements:
     - FR-042: Generates a draft file under IODMS/Drafts/{Year}/{FolderID}/fax-...doc
+    - FR-144: Support target_year override
     """
-    year = get_effective_year()
+    year = payload.target_year if payload.target_year else get_effective_year()
+    outward_no = payload.outward_no
     
-    # Filename format: fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc
+    if not outward_no or outward_no.strip() == "":
+        raise HTTPException(status_code=400, detail="Outward Number is required")
+
+    # Find the reserved draft
+    draft_record = db.query(models.DraftFile).filter(
+        models.DraftFile.folder_id == payload.folder_id,
+        models.DraftFile.year == year,
+        models.DraftFile.outward_no == outward_no
+    ).first()
+
+    if not draft_record:
+        raise HTTPException(status_code=400, detail="Outward Number is no longer reserved or was already used.")
+
+    # Filename format: draft-{UserID}-{YYYYMMDD}-{HHMMSS}.docx
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = f"fax-{payload.actioned_by}-{timestamp}.doc"
+    filename = f"draft-{payload.actioned_by}-{timestamp}.docx"
     
     relative_folder, full_folder = filesystem_utils.ensure_folder_path(get_iodms_root_path(), "Drafts", year, payload.folder_id)
     relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
     full_path = os.path.join(full_folder, filename)
     
+    # Update payload with the actual outward_no if it changed
+    payload_dict = payload.model_dump()
+    payload_dict["outward_no"] = outward_no
+    
     # Save the physical file on disk (FR-042)
     try:
-        create_draft_document(full_path, payload.model_dump(), db)
+        create_draft_document(full_path, payload_dict, db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create draft document on disk: {str(e)}")
 
@@ -170,25 +285,158 @@ def save_draft(payload: DraftCreate, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
+    # Update the reserved draft record
+    draft_record.file_path = relative_path
+    draft_record.issuing_date = iss_date
+    draft_record.address_to = payload.address_to
+    draft_record.cc_to = payload.cc_to
+    draft_record.subject = payload.subject
+    draft_record.remarks = payload.remarks
+    draft_record.prepared_by = payload.prepared_by
+    draft_record.actioned_by = payload.actioned_by
+    draft_record.template_type = payload.template_type
+    draft_record.linked_documents = payload.linked_documents
+    draft_record.attachment_paths = [relative_path]
+    
+    # We do NOT add a new record, we just commit the update
+    # db.add(draft_record) is not needed because it's already attached to the session
+    db.commit()
+    return {"message": "Draft created successfully", "draft_id": draft_record.draft_id, "outward_no": outward_no, "success": True}
+
+
+# FR-057: Direct Draft Upload
+@router.post("/drafts/upload")
+def upload_existing_draft(
+    folder_id: str = Form(...),
+    issuing_date: str = Form(...),
+    address_to: str = Form(...), # comma separated IDs
+    cc_to: str = Form(""),       # comma separated IDs
+    subject: str = Form(...),
+    remarks: str = Form(""),
+    prepared_by: str = Form(...),
+    actioned_by: str = Form(...),
+    files: List[UploadFile] = File([]),
+    db: Session = Depends(get_db)
+):
+    """Uploads an existing PDF or DOCX file directly as a new Draft.
+    
+    Implements:
+    - FR-057: Bypasses template generation and uses user-uploaded file.
+    """
+    year = get_effective_year()
+    outward_no = get_next_outward_no(folder_id, year, db)
+    
+    attachment_paths = []
+    any_compressed = False
+
+    if not files or (len(files) == 1 and files[0].filename == ""):
+        raise HTTPException(status_code=400, detail="At least one file is required.")
+
+    for idx, file in enumerate(files):
+        if not file.filename: continue
+        ext = os.path.splitext(file.filename)[1]
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        if len(files) > 1:
+            filename = f"fax-{actioned_by}-{timestamp}_{idx+1}{ext}"
+        else:
+            filename = f"fax-{actioned_by}-{timestamp}{ext}"
+        
+        relative_folder, full_folder = filesystem_utils.ensure_folder_path(get_iodms_root_path(), "Drafts", year, folder_id)
+        relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
+        full_path = os.path.join(full_folder, filename)
+        
+        try:
+            with open(full_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                
+            final_abs_path, was_compressed = filesystem_utils.compress_file_if_large(full_path)
+            if was_compressed: any_compressed = True
+            
+            if was_compressed:
+                final_filename = os.path.basename(final_abs_path)
+                attachment_paths.append(os.path.join(relative_folder, final_filename).replace("\\", "/"))
+            else:
+                attachment_paths.append(relative_path)
+                
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+
+    try:
+        iss_date = datetime.datetime.strptime(issuing_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+    addr_list = [int(i.strip()) for i in address_to.split(",") if i.strip().isdigit()]
+    cc_list = [int(i.strip()) for i in cc_to.split(",") if i.strip().isdigit()]
+
     new_draft = models.DraftFile(
-        file_path=relative_path,
-        outward_no=payload.outward_no,
-        folder_id=payload.folder_id,
+        file_path=attachment_paths[0] if attachment_paths else "",
+        attachment_paths=attachment_paths,
+        outward_no=outward_no,
+        folder_id=folder_id,
         issuing_date=iss_date,
-        address_to=payload.address_to,
-        cc_to=payload.cc_to,
-        subject=payload.subject,
-        remarks=payload.remarks,
-        prepared_by=payload.prepared_by,
-        actioned_by=payload.actioned_by,
-        template_type=payload.template_type,
+        address_to=addr_list,
+        cc_to=cc_list,
+        subject=subject,
+        remarks=remarks,
+        prepared_by=prepared_by,
+        actioned_by=actioned_by,
+        template_type="Manual Upload",
         is_locked=False,
         year=year
     )
     
     db.add(new_draft)
     db.commit()
-    return {"message": "Draft created successfully", "draft_id": new_draft.draft_id, "success": True}
+    return {"message": "Draft uploaded successfully", "draft_id": new_draft.draft_id, "outward_no": outward_no, "success": True}
+
+# FR-052: Re-Upload Draft File (after editing)
+@router.put("/drafts/{draft_id}/reupload")
+def reupload_draft_file(
+    draft_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Re-uploads an edited draft file and releases its lock.
+    
+    Implements:
+    - FR-052: User edits file locally and re-uploads it here.
+    """
+    draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+        
+    if not draft.is_locked:
+        raise HTTPException(status_code=400, detail="Draft is not locked. Lock it first before re-uploading.")
+
+    full_path = os.path.join(get_iodms_root_path(), draft.file_path)
+    
+    try:
+        with open(full_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # FR-161: Compress file if larger than 50MB
+        final_abs_path, was_compressed = filesystem_utils.compress_file_if_large(full_path)
+        if was_compressed:
+            final_filename = os.path.basename(final_abs_path)
+            # Update path in DB to point to new .zip file
+            draft.file_path = os.path.join(os.path.dirname(draft.file_path), final_filename).replace("\\", "/")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to overwrite draft file: {str(e)}")
+
+    # Release lock after successful upload
+    locked_user = draft.locked_by
+    draft.is_locked = False
+    draft.locked_by = None
+    draft.locked_at = None
+    
+    log_edit(db, "draft", str(draft_id), "reupload", locked_user or "unknown")
+    
+    db.commit()
+    
+    return {"message": "Draft updated and unlocked successfully", "success": True}
 
 
 # FR-044, FR-045: Modify Outward (Modify Mode)
@@ -228,6 +476,11 @@ def modify_outward(
     record.prepared_by = payload.prepared_by
     record.actioned_by = payload.actioned_by
     record.template_type = payload.template_type
+    old_links = record.linked_documents or []
+    record.linked_documents = payload.linked_documents
+    
+    source_id = f"outward:{folder_id}:{year}:{outward_no}"
+    sync_bidirectional_links(db, source_id, old_links, payload.linked_documents)
 
     # Recreate the file on disk
     full_path = os.path.join(get_iodms_root_path(), record.document_path)
@@ -235,6 +488,8 @@ def modify_outward(
         create_draft_document(full_path, payload.model_dump(), db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to overwrite file on disk: {str(e)}")
+
+    log_edit(db, "outward", f"{folder_id}:{year}:{outward_no}", "edit", payload.actioned_by, payload.model_dump())
 
     db.commit()
     return {"message": "Outward record updated successfully", "success": True}
@@ -250,6 +505,8 @@ def get_drafts(db: Session = Depends(get_db)):
     - FR-057: No per-user filtering (all users see all drafts).
     - Excludes drafts pending deletion.
     """
+    check_draft_locks(db)
+
     # Exclude drafts that are flagged in pending_deletions
     pending_deletes = db.query(models.PendingDeletion).filter(
         models.PendingDeletion.source_table == "draft_files",
@@ -318,6 +575,10 @@ def lock_draft(draft_id: int, payload: DraftLockAction, db: Session = Depends(ge
 
     draft.is_locked = True
     draft.locked_by = payload.user_id
+    draft.locked_at = datetime.datetime.now()
+    
+    log_edit(db, "draft", str(draft_id), "lock", payload.user_id)
+    
     db.commit()
     return {"message": "Draft file locked for editing", "file_path": draft.file_path, "success": True}
 
@@ -334,8 +595,13 @@ def unlock_draft(draft_id: int, db: Session = Depends(get_db)):
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
 
+    locked_user = draft.locked_by
     draft.is_locked = False
     draft.locked_by = None
+    draft.locked_at = None
+    
+    log_edit(db, "draft", str(draft_id), "unlock", locked_user or "unknown")
+    
     db.commit()
     return {"message": "Draft file unlocked", "success": True}
 
@@ -373,10 +639,15 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
          outward_no = get_next_outward_no(folder_id, year, db)
 
     # File rename & move (FR-054)
-    # From: Drafts/{Year}/{FolderID}/fax-...doc
-    # To: Outward/{Year}/{FolderID}/{OutwardNo}.doc
+    # From: Drafts/{Year}/{FolderID}/fax-...{ext}
+    # To: Outward/{Year}/{FolderID}/{OutwardNo}.{ext}
     old_relative_path = draft.file_path
-    new_filename = f"{outward_no}.doc"
+    
+    ext = os.path.splitext(old_relative_path)[1]
+    if not ext:
+        ext = ".doc"
+    new_filename = f"{outward_no}{ext}"
+    is_compressed = (ext.lower() == ".zip")
     
     try:
         new_relative_path, full_new_path = filesystem_utils.move_draft_to_outward(
@@ -386,6 +657,26 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to move document on disk: {str(e)}")
         
     full_old_path = os.path.join(get_iodms_root_path(), old_relative_path)
+
+    # If there are multiple files (from direct upload), move them all
+    new_attachment_paths = []
+    if draft.attachment_paths:
+        for idx, p in enumerate(draft.attachment_paths):
+            p_ext = os.path.splitext(p)[1]
+            if len(draft.attachment_paths) > 1:
+                p_filename = f"{outward_no}_{idx+1}{p_ext}"
+            else:
+                p_filename = f"{outward_no}{p_ext}"
+            
+            try:
+                new_p, _ = filesystem_utils.move_draft_to_outward(
+                    get_iodms_root_path(), p, year, folder_id, p_filename
+                )
+                new_attachment_paths.append(new_p)
+            except Exception:
+                pass
+    else:
+        new_attachment_paths = [new_relative_path]
     
     # Perform file system move and rename
     if not os.path.exists(full_old_path) and not os.path.exists(full_new_path):
@@ -414,11 +705,23 @@ def dispatch_draft(draft_id: int, db: Session = Depends(get_db)):
         remarks=draft.remarks,
         prepared_by=draft.prepared_by,
         actioned_by=draft.actioned_by,
-        document_path=new_relative_path,
-        template_type=draft.template_type
+        document_path=new_attachment_paths[0] if new_attachment_paths else new_relative_path,
+        attachment_paths=new_attachment_paths,
+        template_type=draft.template_type,
+        linked_documents=draft.linked_documents,
+        is_compressed=is_compressed
     )
     
     db.add(new_outward)
+    
+    # Log dispatch action
+    log_edit(db, "draft", str(draft_id), "dispatch", draft.actioned_by)
+    log_edit(db, "outward", f"{folder_id}:{year}:{outward_no}", "create", draft.actioned_by)
+    
+    # Sync links
+    source_id = f"outward:{folder_id}:{year}:{outward_no}"
+    sync_bidirectional_links(db, source_id, [], draft.linked_documents)
+    
     db.delete(draft)  # delete draft record (FR-054)
     db.commit()
 
@@ -451,16 +754,19 @@ def discard_draft(draft_id: int, requester_id: str, db: Session = Depends(get_db
 # FR-090, FR-091, FR-092, FR-093: View Outward Register
 @router.get("/register")
 def get_outward_register(
-    year: int,
+    year: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
     search_folder_id: Optional[str] = None,
     search_prepared_by: Optional[str] = None,
     search_address_to: Optional[str] = None,
     search_subject: Optional[str] = None,
+    search_status: Optional[str] = None,
+    search_date_from: Optional[str] = None,
+    search_date_to: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Retrieves paginated outward logs filtered by year and search keywords.
+    """Retrieves paginated outward logs filtered by year and advanced search keywords.
     
     Implements:
     - FR-090: Displays outward entries.
@@ -469,7 +775,14 @@ def get_outward_register(
     - FR-093: Search filters: Folder ID, Prepared By, Address To (text search), Subject.
     - FR-095: Marks row with Pending Deletion badge.
     """
-    query = db.query(models.OutwardRegister).filter(models.OutwardRegister.year == year)
+    query = db.query(models.OutwardRegister).filter(models.OutwardRegister.status != "Permanently Deleted")
+
+    if year and year != "All":
+        try:
+            y = int(year)
+            query = query.filter(models.OutwardRegister.year == y)
+        except ValueError:
+            pass
 
     # Search filters
     if search_folder_id:
@@ -487,6 +800,20 @@ def get_outward_register(
             query = query.filter(models.OutwardRegister.address_to.overlap(matching_ids))
         else:
             query = query.filter(models.OutwardRegister.address_to.overlap([-1]))
+    if search_status:
+        query = query.filter(models.OutwardRegister.status == search_status)
+    if search_date_from:
+        try:
+            d_from = datetime.datetime.strptime(search_date_from, "%Y-%m-%d").date()
+            query = query.filter(models.OutwardRegister.issuing_date >= d_from)
+        except ValueError:
+            pass
+    if search_date_to:
+        try:
+            d_to = datetime.datetime.strptime(search_date_to, "%Y-%m-%d").date()
+            query = query.filter(models.OutwardRegister.issuing_date <= d_to)
+        except ValueError:
+            pass
     
     total = query.count()
     offset = (page - 1) * limit
@@ -545,22 +872,42 @@ def get_outward_register(
 
 # FR-094: View Document
 @router.get("/view-document")
-def view_document(path: str):
-    """Downloads/streams the Word document file.
+def view_document(path: str, db: Session = Depends(get_db)):
+    """Serves the document file directly (PDF or DOC/DOCX) for in-browser viewer.
     
     Implements:
-    - FR-094: Stream file from stored path.
+    - FR-094: In-Browser Document View
     """
-    root_dir = os.path.abspath(get_iodms_root_path())
-    full_path = os.path.abspath(os.path.join(root_dir, path))
+    root_path = os.path.abspath(get_iodms_root_path())
+    full_path = os.path.abspath(os.path.join(root_path, path.lstrip("/\\")))
     
-    # Security Check: Prevent path traversal
-    if not full_path.startswith(root_dir):
-        raise HTTPException(status_code=403, detail="Invalid path access denied")
+    # Path traversal check
+    if not full_path.startswith(root_path):
+        raise HTTPException(status_code=403, detail="Forbidden: Path traversal detected")
         
     if not os.path.exists(full_path):
-        raise HTTPException(status_code=404, detail="Document file not found on server")
+        raise HTTPException(status_code=404, detail="File not found on server disk")
     return FileResponse(full_path)
+
+# FR-058: Edit Audit Log Endpoint
+@router.get("/edit-log/{record_type}/{record_id}")
+def get_edit_log(record_type: str, record_id: str, db: Session = Depends(get_db)):
+    """Gets the edit history for a specific record."""
+    logs = db.query(models.EditLog).filter(
+        models.EditLog.record_type == record_type,
+        models.EditLog.record_id == record_id
+    ).order_by(models.EditLog.edited_at.desc()).all()
+    
+    result = []
+    for log in logs:
+        editor = db.query(models.User).filter(models.User.user_id == log.edited_by).first()
+        result.append({
+            "action": log.action,
+            "edited_by": editor.name if editor else log.edited_by,
+            "edited_at": log.edited_at.isoformat(),
+            "changes": log.changes
+        })
+    return result
 
 
 # FR-095: Soft-delete outward register entry

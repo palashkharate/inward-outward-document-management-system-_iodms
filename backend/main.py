@@ -8,7 +8,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import models
 from database import engine
-from routers import auth, admin, inward, outward, auditor
+from routers import auth, admin, inward, outward, auditor, dashboard
 
 # FR-011: Initialise database tables if they do not already exist on system startup.
 # This runs the SQL commands to create the tables in PostgreSQL.
@@ -19,6 +19,23 @@ app = FastAPI(
     description="Backend API for the Inward/Outward Document Management System at HAL AURDC, Nashik",
     version="1.0"
 )
+
+from sqlalchemy import text
+@app.on_event("startup")
+def apply_migrations():
+    with engine.begin() as conn:
+        migrations = [
+            "ALTER TABLE outward_register ADD COLUMN linked_documents VARCHAR[] DEFAULT '{}'",
+            "ALTER TABLE outward_register ADD COLUMN attachment_paths VARCHAR[] DEFAULT '{}'",
+            "ALTER TABLE draft_files ADD COLUMN attachment_paths VARCHAR[] DEFAULT '{}'",
+            "ALTER TABLE draft_files ADD COLUMN linked_documents VARCHAR[] DEFAULT '{}'"
+        ]
+        for query in migrations:
+            try:
+                conn.execute(text(query))
+            except Exception:
+                pass
+
 
 # NFR-001, NFR-006: Allow only local connections (CORS configuration).
 # This prevents other websites from making requests to our backend.
@@ -44,6 +61,10 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 
 # Router for Administrative & Master Lists (Module 8, 9)
 app.include_router(admin.router, prefix="/api/admin", tags=["Administration"])
+app.include_router(admin.address_router, prefix="/api/admin", tags=["Address Book"])
+
+# Router for Dashboard Analytics
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 
 # Router for Inward Registrations (Module 5, 6)
 app.include_router(inward.router, prefix="/api/inward", tags=["Inward Register"])

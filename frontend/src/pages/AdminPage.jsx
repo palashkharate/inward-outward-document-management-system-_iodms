@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Tabs,
@@ -38,10 +39,12 @@ import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
 import StorageIcon from '@mui/icons-material/Storage';
 import LockResetIcon from '@mui/icons-material/LockReset';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useAuth } from '../App.jsx';
 
 export default function AdminPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
   
   // Feedback alerts
@@ -149,6 +152,56 @@ export default function AdminPage() {
       setUPassword('');
     } catch (e) {
       setErrorMsg('Failed to reset password.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // SUB-TAB 1.5: DELETED ACCOUNTS
+  // ----------------------------------------------------
+  const [deletedUsers, setDeletedUsers] = useState([]);
+
+  const fetchDeletedUsers = async () => {
+    try {
+      const res = await axios.get('/api/admin/deleted-users');
+      setDeletedUsers(res.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSoftDeleteUser = async (user_id) => {
+    if (!window.confirm(`Are you sure you want to delete user ${user_id}?`)) return;
+    try {
+      await axios.delete(`/api/admin/users/${user_id}`, {
+        params: { admin_id: user.user_id }
+      });
+      setSuccessMsg('User deleted successfully.');
+      fetchUsers();
+      fetchDeletedUsers();
+    } catch (e) {
+      setErrorMsg(e.response?.data?.detail || 'Failed to delete user.');
+    }
+  };
+
+  const handleRestoreUser = async (user_id) => {
+    try {
+      await axios.put(`/api/admin/users/${user_id}/restore`);
+      setSuccessMsg('User restored successfully.');
+      fetchUsers();
+      fetchDeletedUsers();
+    } catch (e) {
+      setErrorMsg('Failed to restore user.');
+    }
+  };
+
+  const handleHardDeleteUser = async (user_id) => {
+    if (!window.confirm(`WARNING: This will permanently delete user ${user_id} and cannot be undone. Are you sure?`)) return;
+    try {
+      await axios.delete(`/api/admin/users/${user_id}/permanent`);
+      setSuccessMsg('User permanently deleted.');
+      fetchDeletedUsers();
+    } catch (e) {
+      setErrorMsg('Failed to permanently delete user.');
     }
   };
 
@@ -365,19 +418,187 @@ export default function AdminPage() {
   };
 
   // ----------------------------------------------------
+  // SUB-TAB 6: TEMPLATES (FR-143)
+  // ----------------------------------------------------
+  const [templates, setTemplates] = useState([]);
+  const [templateFile, setTemplateFile] = useState(null);
+  const [templateName, setTemplateName] = useState('');
+  const [templateType, setTemplateType] = useState('General');
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await axios.get('/api/admin/templates');
+      setTemplates(res.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUploadTemplate = async () => {
+    if (!templateFile || !templateName) {
+      setErrorMsg('Please select a file and enter a name.');
+      return;
+    }
+    setUploadingTemplate(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      const formData = new FormData();
+      formData.append('name', templateName);
+      formData.append('template_type', templateType);
+      formData.append('file', templateFile);
+      formData.append('uploaded_by', user.user_id);
+      
+      await axios.post('/api/admin/templates', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccessMsg('Template uploaded successfully.');
+      setTemplateFile(null);
+      setTemplateName('');
+      fetchTemplates();
+    } catch (e) {
+      setErrorMsg(e.response?.data?.detail || 'Failed to upload template.');
+    } finally {
+      setUploadingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) return;
+    try {
+      await axios.delete(`/api/admin/templates/${templateId}`);
+      setSuccessMsg('Template deleted successfully.');
+      fetchTemplates();
+    } catch (e) {
+      setErrorMsg('Failed to delete template.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // SUB-TAB 7: RECYCLE BIN (FR-164/165)
+  // ----------------------------------------------------
+  const [trashBinItems, setTrashBinItems] = useState([]);
+
+  const fetchTrashBin = async () => {
+    try {
+      const res = await axios.get('/api/admin/trash-bin');
+      setTrashBinItems(res.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRestoreTrash = async (id) => {
+    if (!window.confirm('Are you sure you want to restore this record?')) return;
+    setSuccessMsg('');
+    try {
+      const res = await axios.put(`/api/admin/trash-bin/${id}/restore`);
+      setSuccessMsg(res.data.message);
+      fetchTrashBin();
+    } catch (e) {
+      setErrorMsg('Failed to restore record.');
+    }
+  };
+
+  const handlePermanentDeleteTrash = async (id) => {
+    if (!window.confirm('WARNING: This action will permanently delete the record and its file. It cannot be undone. Are you sure?')) return;
+    setSuccessMsg('');
+    try {
+      const res = await axios.delete(`/api/admin/trash-bin/${id}`);
+      setSuccessMsg(res.data.message);
+      fetchTrashBin();
+    } catch (e) {
+      setErrorMsg('Failed to permanently delete record.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // SUB-TAB 8: PERMANENTLY DELETED / LOST NUMBERS
+  // ----------------------------------------------------
+  const [lostNumbers, setLostNumbers] = useState([]);
+
+  const fetchLostNumbers = async () => {
+    try {
+      const res = await axios.get('/api/admin/permanently-deleted');
+      setLostNumbers(res.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // ----------------------------------------------------
+  // SUB-TAB 9: SECURITY SETTINGS (IP WHITELIST)
+  // ----------------------------------------------------
+  const [allowedIps, setAllowedIps] = useState([]);
+  const [newIp, setNewIp] = useState('');
+  const [newIpDesc, setNewIpDesc] = useState('');
+
+  const fetchAllowedIps = async () => {
+    try {
+      const res = await axios.get('/api/admin/allowed-ips');
+      setAllowedIps(res.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddAllowedIp = async () => {
+    if (!newIp.trim()) {
+      setErrorMsg('IP address is required.');
+      return;
+    }
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      await axios.post('/api/admin/allowed-ips', {
+        ip_address: newIp.trim(),
+        description: newIpDesc.trim()
+      });
+      setSuccessMsg('IP address added to whitelist.');
+      setNewIp('');
+      setNewIpDesc('');
+      fetchAllowedIps();
+    } catch (e) {
+      setErrorMsg(e.response?.data?.detail || 'Failed to add IP address.');
+    }
+  };
+
+  const handleDeleteAllowedIp = async (id) => {
+    if (!window.confirm('Are you sure you want to remove this IP from the whitelist?')) return;
+    setSuccessMsg('');
+    try {
+      await axios.delete(`/api/admin/allowed-ips/${id}`);
+      setSuccessMsg('IP address removed.');
+      fetchAllowedIps();
+    } catch (e) {
+      setErrorMsg('Failed to remove IP address.');
+    }
+  };
+
+  // ----------------------------------------------------
   // TAB SELECTION CONTROLS
   // ----------------------------------------------------
   useEffect(() => {
-    if (activeTab === 0) fetchUsers();
-    if (activeTab === 1) fetchDeletions();
-    if (activeTab === 2) fetchProfileEdits();
-    if (activeTab === 3) {
+    if (activeTab === 0) {
+      fetchUsers();
+    }
+    if (activeTab === 1) {
+      fetchDeletedUsers();
+    }
+    if (activeTab === 2) fetchDeletions();
+    if (activeTab === 3) fetchProfileEdits();
+    if (activeTab === 4) {
       fetchFolders();
       fetchAddressGroups();
       fetchRF();
       fetchOB();
     }
-    if (activeTab === 4) fetchSettings();
+    if (activeTab === 5) fetchSettings();
+    if (activeTab === 6) fetchTemplates();
+    if (activeTab === 7) fetchTrashBin();
+    if (activeTab === 8) fetchLostNumbers();
+    if (activeTab === 9) fetchAllowedIps();
   }, [activeTab]);
 
   return (
@@ -397,10 +618,15 @@ export default function AdminPage() {
           setErrorMsg('');
         }} variant="scrollable" scrollButtons="auto">
           <Tab label="User Management" sx={{ fontWeight: 600 }} />
+          <Tab label="Deleted Accounts" sx={{ fontWeight: 600 }} />
           <Tab label="Pending Deletions" sx={{ fontWeight: 600 }} />
           <Tab label="Profile Edit Approvals" sx={{ fontWeight: 600 }} />
           <Tab label="Master Lists" sx={{ fontWeight: 600 }} />
           <Tab label="System Settings" sx={{ fontWeight: 600 }} />
+          <Tab label="Templates" sx={{ fontWeight: 600 }} />
+          <Tab label="Recycle Bin" sx={{ fontWeight: 600 }} />
+          <Tab label="Permanently Deleted / Lost Numbers" sx={{ fontWeight: 600 }} />
+          <Tab label="Security Settings" sx={{ fontWeight: 600 }} />
         </Tabs>
       </Box>
 
@@ -413,9 +639,9 @@ export default function AdminPage() {
             </Button>
           </Box>
 
-          <TableContainer component={Paper} sx={{ border: '1px solid #D1D5DB' }}>
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
             <Table size="small">
-              <TableHead sx={{ bgcolor: '#0F766E !important' }}>
+              <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>User ID</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>PB No.</TableCell>
@@ -466,6 +692,16 @@ export default function AdminPage() {
                       >
                         Reset PW
                       </Button>
+                      {row.user_id !== 'admin' && (
+                        <Button
+                          size="small"
+                          color="error"
+                          sx={{ ml: 1 }}
+                          onClick={() => handleSoftDeleteUser(row.user_id)}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -475,12 +711,61 @@ export default function AdminPage() {
         </Box>
       )}
 
-      {/* TAB 1: PENDING DELETIONS (9B) */}
+      {/* TAB 1: DELETED ACCOUNTS (FR-116) */}
       {activeTab === 1 && (
         <Box>
-          <TableContainer component={Paper} sx={{ border: '1px solid #D1D5DB' }}>
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
             <Table size="small">
-              <TableHead sx={{ bgcolor: '#0F766E !important' }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>User ID</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>PB No.</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Deleted On</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Deleted By</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {deletedUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                      No deleted accounts found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  deletedUsers.map((row) => (
+                    <TableRow key={row.user_id}>
+                      <TableCell fontWeight={600}>{row.user_id}</TableCell>
+                      <TableCell>{row.pb_no}</TableCell>
+                      <TableCell fontWeight={600}>{row.name}</TableCell>
+                      <TableCell>{row.role}</TableCell>
+                      <TableCell>{row.deleted_at ? new Date(row.deleted_at).toLocaleString() : '-'}</TableCell>
+                      <TableCell>{row.deleted_by}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" color="primary" onClick={() => handleRestoreUser(row.user_id)} sx={{ mr: 1 }}>
+                          Restore
+                        </Button>
+                        <Button size="small" color="error" onClick={() => handleHardDeleteUser(row.user_id)}>
+                          Perm. Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
+      {/* TAB 2: PENDING DELETIONS (9B) */}
+      {activeTab === 2 && (
+        <Box>
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+            <Table size="small">
+              <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>Source Table</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Record ID / Key</TableCell>
@@ -521,12 +806,12 @@ export default function AdminPage() {
         </Box>
       )}
 
-      {/* TAB 2: PENDING PROFILE EDITS (9C) */}
-      {activeTab === 2 && (
+      {/* TAB 3: PENDING PROFILE EDITS (9C) */}
+      {activeTab === 3 && (
         <Box>
-          <TableContainer component={Paper} sx={{ border: '1px solid #D1D5DB' }}>
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
             <Table size="small">
-              <TableHead sx={{ bgcolor: '#0F766E !important' }}>
+              <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>User ID</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Proposed Updates</TableCell>
@@ -568,8 +853,8 @@ export default function AdminPage() {
         </Box>
       )}
 
-      {/* TAB 3: MASTER LISTS (9D) */}
-      {activeTab === 3 && (
+      {/* TAB 4: MASTER LISTS (9D) */}
+      {activeTab === 4 && (
         <Box>
           {/* Subtabs for Master list types */}
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2.5 }}>
@@ -588,11 +873,11 @@ export default function AdminPage() {
           </Box>
 
           {/* Subtab tables */}
-          <TableContainer component={Paper} sx={{ border: '1px solid #D1D5DB' }}>
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
             {masterSubtab === 0 ? (
               // Folders (FR-130)
               <Table size="small">
-                <TableHead sx={{ bgcolor: '#0F766E !important' }}>
+                <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Folder ID</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Folder Name</TableCell>
@@ -615,7 +900,7 @@ export default function AdminPage() {
             ) : (
               // Generic Name lists
               <Table size="small">
-                <TableHead sx={{ bgcolor: '#0F766E !important' }}>
+                <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Entry Name</TableCell>
                     <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
@@ -638,8 +923,8 @@ export default function AdminPage() {
         </Box>
       )}
 
-      {/* TAB 4: SYSTEM SETTINGS (9E) */}
-      {activeTab === 4 && (
+      {/* TAB 5: SYSTEM SETTINGS (9E) */}
+      {activeTab === 5 && (
         <Card sx={{ border: '1px solid #D1D5DB' }}>
           <CardContent sx={{ p: 4 }}>
             <Grid container spacing={3}>
@@ -704,6 +989,32 @@ export default function AdminPage() {
                 </Button>
               </Grid>
 
+              <Grid item xs={12}>
+                <Divider />
+              </Grid>
+
+              {/* Previous Year Entry (FR-144) */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                  4. Previous Year Document Entry:
+                </Typography>
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item>
+                    <Button variant="outlined" color="primary" onClick={() => navigate('/log-inward?target_year=true')}>
+                      Log Inward (Previous Year)
+                    </Button>
+                  </Grid>
+                  <Grid item>
+                    <Button variant="outlined" color="primary" onClick={() => navigate('/compose-outward?target_year=true')}>
+                      Compose Outward (Previous Year)
+                    </Button>
+                  </Grid>
+                </Grid>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  Create manual entries in previous years. You will be prompted to select the target year on the respective forms.
+                </Typography>
+              </Grid>
+
               <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
                 <Button variant="contained" color="primary" startIcon={<SaveIcon />} onClick={handleSaveSettings} sx={{ px: 4 }}>
                   Save Configuration
@@ -712,6 +1023,106 @@ export default function AdminPage() {
             </Grid>
           </CardContent>
         </Card>
+      )}
+
+      {/* TAB 6: TEMPLATES (FR-143) */}
+      {activeTab === 6 && (
+        <Box>
+          <Card sx={{ mb: 3, border: '1px solid #D1D5DB' }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} gutterBottom>Upload New Template</Typography>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} sm={3}>
+                  <TextField 
+                    fullWidth 
+                    size="small" 
+                    label="Template Name" 
+                    value={templateName}
+                    onChange={e => setTemplateName(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    label="Template Type"
+                    value={templateType}
+                    onChange={e => setTemplateType(e.target.value)}
+                  >
+                    <MenuItem value="General">General</MenuItem>
+                    <MenuItem value="Confidential">Confidential</MenuItem>
+                    <MenuItem value="Secret">Secret</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<UploadFileIcon />}
+                    fullWidth
+                  >
+                    {templateFile ? templateFile.name : 'Select .docx File'}
+                    <input type="file" hidden accept=".docx" onChange={e => setTemplateFile(e.target.files[0])} />
+                  </Button>
+                </Grid>
+                <Grid item xs={12} sm={2}>
+                  <Button 
+                    variant="contained" 
+                    fullWidth 
+                    onClick={handleUploadTemplate}
+                    disabled={uploadingTemplate || !templateFile || !templateName}
+                  >
+                    {uploadingTemplate ? 'Uploading...' : 'Upload'}
+                  </Button>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>ID</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Uploaded By</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {templates.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                      No templates uploaded yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  templates.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.id}</TableCell>
+                      <TableCell fontWeight={600}>{row.name}</TableCell>
+                      <TableCell>
+                        <Chip label={row.template_type} size="small" color={
+                          row.template_type === 'Secret' ? 'error' : row.template_type === 'Confidential' ? 'warning' : 'default'
+                        } />
+                      </TableCell>
+                      <TableCell>{row.uploaded_by}</TableCell>
+                      <TableCell>{new Date(row.uploaded_on).toLocaleString()}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => handleDeleteTemplate(row.id)}>
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
       )}
 
       {/* User Edit/Add Dialogue (FR-111, FR-112) */}
@@ -878,6 +1289,187 @@ export default function AdminPage() {
           <Button onClick={() => setDbeaverDialogOpen(false)} variant="contained">OK</Button>
         </DialogActions>
       </Dialog>
+
+      {/* TAB 7: RECYCLE BIN */}
+      {activeTab === 7 && (
+        <Box>
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+            Recycle Bin (30 Days)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Records deleted by Admin are kept here for 30 days before being permanently removed.
+          </Typography>
+
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Source Table</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Record ID</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Deleted By</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Deleted On</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Expires On</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {trashBinItems.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      Trash Bin is empty.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  trashBinItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.source_table}</TableCell>
+                      <TableCell fontWeight={600}>{item.record_id}</TableCell>
+                      <TableCell>{item.deleted_by}</TableCell>
+                      <TableCell>{new Date(item.trashed_at).toLocaleString()}</TableCell>
+                      <TableCell color="error.main">{new Date(item.expires_at).toLocaleString()}</TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          color="primary"
+                          variant="contained"
+                          sx={{ mr: 1 }}
+                          onClick={() => handleRestoreTrash(item.id)}
+                        >
+                          Restore
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          variant="contained"
+                          onClick={() => handlePermanentDeleteTrash(item.id)}
+                        >
+                          Delete Permanently
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
+      {/* TAB 8: PERMANENTLY DELETED / LOST NUMBERS */}
+      {activeTab === 8 && (
+        <Box>
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+            Permanently Deleted / Lost Numbers
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            These are sequence numbers that were permanently deleted. New files cannot be created on these numbers.
+          </Typography>
+
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Record ID</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Deleted By</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Deleted On</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {lostNumbers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      No lost numbers found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  lostNumbers.map((item, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell fontWeight={600} color="error.main">{item.record_id}</TableCell>
+                      <TableCell>{item.deleted_by}</TableCell>
+                      <TableCell>{new Date(item.trashed_at).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
+      {/* TAB 9: SECURITY SETTINGS (FR-172) */}
+      {activeTab === 9 && (
+        <Box>
+          <Card sx={{ mb: 3, border: '1px solid #D1D5DB' }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} gutterBottom>Whitelist IP Address</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Enter IP addresses that are allowed to access this system. You can enter exact IPs (e.g. 192.168.1.50), subnets in CIDR notation (e.g. 192.168.1.0/24), or wildcards (e.g. 192.168.1.*). If the list is empty, ALL IPs are allowed.
+              </Typography>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} sm={4}>
+                  <TextField 
+                    fullWidth 
+                    size="small" 
+                    label="IP Address or Wildcard" 
+                    value={newIp}
+                    onChange={e => setNewIp(e.target.value)}
+                    placeholder="192.168.1.*"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField 
+                    fullWidth 
+                    size="small" 
+                    label="Description (Optional)" 
+                    value={newIpDesc}
+                    onChange={e => setNewIpDesc(e.target.value)}
+                    placeholder="e.g. Server Room Subnet"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={2}>
+                  <Button variant="contained" fullWidth onClick={handleAddAllowedIp}>
+                    Whitelist
+                  </Button>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+
+          <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+            <Table size="small">
+              <TableHead sx={{ bgcolor: 'grey.100' }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>IP Address</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Added On</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {allowedIps.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                      No IP addresses whitelisted. The system is currently accessible from any IP on the network.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  allowedIps.map(ip => (
+                    <TableRow key={ip.id} hover>
+                      <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>{ip.ip_address}</TableCell>
+                      <TableCell>{ip.description || '-'}</TableCell>
+                      <TableCell>{new Date(ip.added_at).toLocaleString()}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" color="error" onClick={() => handleDeleteAllowedIp(ip.id)}>Remove</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
     </Box>
   );
 }

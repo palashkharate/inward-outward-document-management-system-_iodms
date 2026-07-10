@@ -30,18 +30,36 @@ import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import CakeIcon from '@mui/icons-material/Cake';
+import HistoryIcon from '@mui/icons-material/History';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useAuth } from '../App.jsx';
+import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
+import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
+import EditHistoryModal from '../components/EditHistoryModal.jsx';
+import { Autocomplete, TextField as MuiTextField } from '@mui/material';
 
-function DraftRow({ row, onAction, user }) {
+function DraftRow({ row, onAction, user, onViewFile }) {
   const [open, setOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const navigate = useNavigate();
+
+  const handleAction = (action, row) => {
+    if (action === 'history') {
+      setHistoryOpen(true);
+    } else {
+      onAction(action, row);
+    }
+  };
 
   return (
     <>
       {/* Draft Summary Row (FR-050) */}
-      <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
+      <TableRow hover sx={{ '& > *': { borderBottom: 'unset' }, bgcolor: row.is_locked ? 'rgba(255, 152, 0, 0.08)' : 'inherit' }}>
         <TableCell>
-          <IconButton size="small" onClick={() => setOpen(!open)}>
+          <IconButton size="small" aria-label="expand row" onClick={() => setOpen(!open)}>
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </TableCell>
@@ -91,12 +109,22 @@ function DraftRow({ row, onAction, user }) {
               </Grid>
 
               <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                {/* View Draft Document (FR-059) */}
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  startIcon={<VisibilityIcon />}
+                  onClick={() => onViewFile(row.file_path)}
+                >
+                  View Document
+                </Button>
+
                 {/* 1. Open / Edit in MS Word (FR-051, FR-052) */}
                 <Button
                   variant="outlined"
                   color="primary"
                   startIcon={<EditIcon />}
-                  onClick={() => onAction('edit', row)}
+                  onClick={() => handleAction('edit', row)}
                 >
                   Open / Edit in Word
                 </Button>
@@ -106,7 +134,7 @@ function DraftRow({ row, onAction, user }) {
                   variant="contained"
                   color="success"
                   startIcon={<SendIcon />}
-                  onClick={() => onAction('dispatch', row)}
+                  onClick={() => handleAction('dispatch', row)}
                   disabled={row.is_locked}
                 >
                   Dispatch Document
@@ -117,7 +145,7 @@ function DraftRow({ row, onAction, user }) {
                   variant="outlined"
                   color="error"
                   startIcon={<DeleteIcon />}
-                  onClick={() => onAction('discard', row)}
+                  onClick={() => handleAction('discard', row)}
                 >
                   Discard Draft
                 </Button>
@@ -127,16 +155,33 @@ function DraftRow({ row, onAction, user }) {
                   <Button
                     variant="contained"
                     color="warning"
-                    onClick={() => onAction('release_lock', row)}
+                    onClick={() => handleAction('release_lock', row)}
                   >
                     Admin: Release Lock
                   </Button>
                 )}
+                
+                {/* Edit History (FR-058) */}
+                <Button
+                  variant="outlined"
+                  color="info"
+                  startIcon={<HistoryIcon />}
+                  onClick={() => handleAction('history', row)}
+                >
+                  Edit History
+                </Button>
               </Box>
             </Box>
           </Collapse>
         </TableCell>
       </TableRow>
+
+      <EditHistoryModal 
+        open={historyOpen} 
+        onClose={() => setHistoryOpen(false)} 
+        recordType="draft" 
+        recordId={row.draft_id} 
+      />
     </>
   );
 }
@@ -146,6 +191,46 @@ export default function DraftsDispatchPage() {
   const [drafts, setDrafts] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Document Viewer state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState('');
+  const [viewerName, setViewerName] = useState('');
+  const [isPdf, setIsPdf] = useState(false);
+
+  // Search state
+  const [searchField, setSearchField] = useState('subject');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // FR-052 Re-upload State
+  const [reuploadFile, setReuploadFile] = useState(null);
+
+  // FR-057 Direct Draft Upload State
+  const [uploadDraftOpen, setUploadDraftOpen] = useState(false);
+  const [newDraftFiles, setNewDraftFiles] = useState([]);
+  const [newDraft, setNewDraft] = useState({
+    folder_id: '',
+    issuing_date: new Date().toISOString().split('T')[0],
+    address_to: '',
+    cc_to: '',
+    subject: '',
+    remarks: '',
+    linked_documents: []
+  });
+  const [availableDocuments, setAvailableDocuments] = useState([]);
+
+  useEffect(() => {
+    // Fetch available documents for linking
+    const fetchDocs = async () => {
+      try {
+        const res = await axios.get('/api/dashboard/search-documents?query=');
+        setAvailableDocuments(res.data);
+      } catch (e) {
+        console.error("Failed to load documents for linking");
+      }
+    };
+    fetchDocs();
+  }, []);
 
   // Lock Dialog state
   const [lockOpen, setLockOpen] = useState(false);
@@ -232,6 +317,7 @@ export default function DraftsDispatchPage() {
 
   const releaseMyLock = async () => {
     setLockOpen(false);
+    setReuploadFile(null);
     try {
       await axios.put(`/api/outward/drafts/${activeDraft.draft_id}/unlock`);
       setSuccessMsg('Lock released and changes synced.');
@@ -241,18 +327,105 @@ export default function DraftsDispatchPage() {
     }
   };
 
+  const handleReupload = async () => {
+    if (!reuploadFile) {
+      setErrorMsg('Please select a file to re-upload.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', reuploadFile);
+    try {
+      await axios.put(`/api/outward/drafts/${activeDraft.draft_id}/reupload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccessMsg('Draft re-uploaded and unlocked successfully.');
+      setLockOpen(false);
+      setReuploadFile(null);
+      fetchDrafts();
+    } catch (e) {
+      setErrorMsg(e.response?.data?.detail || 'Failed to re-upload draft file.');
+    }
+  };
+
+  const handleDirectUpload = async () => {
+    if (newDraftFiles.length === 0 || !newDraft.folder_id || !newDraft.subject || !newDraft.address_to) {
+      setErrorMsg('Please fill all required fields and select at least one file.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('folder_id', newDraft.folder_id);
+    formData.append('issuing_date', newDraft.issuing_date);
+    formData.append('address_to', newDraft.address_to);
+    formData.append('cc_to', newDraft.cc_to);
+    formData.append('subject', newDraft.subject);
+    formData.append('remarks', newDraft.remarks);
+    formData.append('prepared_by', user.user_id);
+    formData.append('actioned_by', user.user_id);
+    formData.append('linked_documents', JSON.stringify(newDraft.linked_documents));
+    
+    newDraftFiles.forEach(f => {
+      formData.append('files', f);
+    });
+
+    try {
+      await axios.post('/api/outward/drafts/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccessMsg('New draft uploaded successfully.');
+      setUploadDraftOpen(false);
+      setNewDraft({
+        folder_id: '',
+        issuing_date: new Date().toISOString().split('T')[0],
+        address_to: '',
+        cc_to: '',
+        subject: '',
+        remarks: '',
+        linked_documents: []
+      });
+      setNewDraftFiles([]);
+      fetchDrafts();
+    } catch (e) {
+      setErrorMsg(e.response?.data?.detail || 'Failed to upload draft.');
+    }
+  };
+
+  const handleViewFile = (path) => {
+    if (!path) return;
+    const filename = path.split('\\').pop().split('/').pop();
+    const isPdfFile = filename.toLowerCase().endsWith('.pdf');
+    setViewerUrl(`/api/outward/view-document?path=${encodeURIComponent(path)}`);
+    setViewerName(filename);
+    setIsPdf(isPdfFile);
+    setViewerOpen(true);
+  };
+
   return (
     <Box sx={{ width: '100%', maxWidth: 1000, mt: 2 }}>
-      <Typography variant="h5" fontWeight={800} sx={{ mb: 3 }}>
-        Drafts & Dispatch Register
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={800}>
+          Drafts & Dispatch Register
+        </Typography>
+        <Button variant="contained" color="secondary" startIcon={<UploadFileIcon />} onClick={() => setUploadDraftOpen(true)}>
+          Upload Draft (PDF/DOCX)
+        </Button>
+      </Box>
 
       {successMsg && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{successMsg}</Alert>}
       {errorMsg && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{errorMsg}</Alert>}
+      
+      <Box sx={{ mb: 3 }}>
+        <UnifiedSearchBar 
+          searchField={searchField} 
+          setSearchField={setSearchField} 
+          searchQuery={searchQuery} 
+          setSearchQuery={setSearchQuery}
+          onSearch={() => fetchDrafts()}
+        />
+      </Box>
 
-      <TableContainer component={Paper} sx={{ border: '1px solid #D1D5DB' }}>
+      <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
         <Table size="small">
-          <TableHead sx={{ bgcolor: '#1E5AA8 !important' }}>
+          <TableHead>
             <TableRow>
               <TableCell width={50} />
               <TableCell sx={{ fontWeight: 600 }}>Outward No.</TableCell>
@@ -266,15 +439,29 @@ export default function DraftsDispatchPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {drafts.length === 0 ? (
+            {drafts.filter(d => {
+              if (!searchQuery) return true;
+              const q = searchQuery.toLowerCase();
+              if (searchField === 'folder_id') return d.folder_id?.toLowerCase().includes(q);
+              if (searchField === 'prepared_by') return d.prepared_by?.toLowerCase().includes(q);
+              if (searchField === 'subject') return d.subject?.toLowerCase().includes(q);
+              return true;
+            }).length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                   No active drafts waiting for dispatch.
                 </TableCell>
               </TableRow>
             ) : (
-              drafts.map((row) => (
-                <DraftRow key={row.draft_id} row={row} onAction={handleAction} user={user} />
+              drafts.filter(d => {
+                if (!searchQuery) return true;
+                const q = searchQuery.toLowerCase();
+                if (searchField === 'folder_id') return d.folder_id?.toLowerCase().includes(q);
+                if (searchField === 'prepared_by') return d.prepared_by?.toLowerCase().includes(q);
+                if (searchField === 'subject') return d.subject?.toLowerCase().includes(q);
+                return true;
+              }).map((row) => (
+                <DraftRow key={row.draft_id} row={row} onAction={handleAction} user={user} onViewFile={handleViewFile} />
               ))
             )}
           </TableBody>
@@ -301,8 +488,20 @@ export default function DraftsDispatchPage() {
             1. Copy the path above or navigate to the shared drafts folder.<br />
             2. Double-click the file to open it in your local <strong>Microsoft Word</strong> editor.<br />
             3. Make your revisions, save, and exit Word.<br />
-            4. Once you have closed Microsoft Word, click <strong>Release Lock & Save</strong> below to release the edit lock.
+            4. If edited directly via LAN, click <strong>Release Lock</strong> below.<br />
+            5. Alternatively, download the draft, edit, and re-upload here.
           </Typography>
+          
+          <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Re-upload Edited Draft:</Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
+                Select File
+                <input type="file" hidden accept=".doc,.docx,.pdf" onChange={(e) => setReuploadFile(e.target.files[0])} />
+              </Button>
+              {reuploadFile && <Typography variant="body2">{reuploadFile.name}</Typography>}
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button
@@ -313,7 +512,10 @@ export default function DraftsDispatchPage() {
             Download Draft
           </Button>
           <Button onClick={releaseMyLock} color="warning" variant="contained">
-            Release Lock & Save
+            Release Lock
+          </Button>
+          <Button onClick={handleReupload} color="primary" variant="contained" disabled={!reuploadFile}>
+            Upload Re-edited File
           </Button>
         </DialogActions>
       </Dialog>
@@ -344,9 +546,106 @@ export default function DraftsDispatchPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDiscardConfirmOpen(false)}>Cancel</Button>
-          <Button onClick={executeDiscard} color="error" variant="contained">Confirm Discard</Button>
+          <Button onClick={executeDiscard} color="error" variant="contained">Request Discard</Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Upload Draft Modal (FR-057) */}
+      <Dialog open={uploadDraftOpen} onClose={() => setUploadDraftOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload Existing Draft (PDF/DOCX)</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="Folder ID" value={newDraft.folder_id} onChange={(e) => setNewDraft({...newDraft, folder_id: e.target.value})} required />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" type="date" label="Issuing Date" value={newDraft.issuing_date} onChange={(e) => setNewDraft({...newDraft, issuing_date: e.target.value})} InputLabelProps={{ shrink: true }} required />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="Address To (IDs, comma-sep)" value={newDraft.address_to} onChange={(e) => setNewDraft({...newDraft, address_to: e.target.value})} required />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="CC To (IDs, comma-sep)" value={newDraft.cc_to} onChange={(e) => setNewDraft({...newDraft, cc_to: e.target.value})} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth size="small" label="Subject" value={newDraft.subject} onChange={(e) => setNewDraft({...newDraft, subject: e.target.value})} required />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth size="small" label="Remarks" multiline rows={2} value={newDraft.remarks} onChange={(e) => setNewDraft({...newDraft, remarks: e.target.value})} />
+            </Grid>
+            <Grid item xs={12}>
+              <Autocomplete
+                multiple
+                options={availableDocuments}
+                getOptionLabel={(option) => {
+                  if (typeof option === 'string') {
+                    const doc = availableDocuments.find(d => d.id === option);
+                    if (doc) return `${doc.type.toUpperCase()}: ${doc.subject} (${doc.id})`;
+                    return option;
+                  }
+                  return `${option.type.toUpperCase()}: ${option.subject} (${option.id})`;
+                }}
+                value={newDraft.linked_documents.map(id => availableDocuments.find(d => d.id === id) || id)}
+                onChange={(event, newValue) => {
+                  setNewDraft({...newDraft, linked_documents: newValue.map(v => typeof v === 'string' ? v : v.id)});
+                }}
+                renderInput={(params) => (
+                  <MuiTextField
+                    {...params}
+                    variant="outlined"
+                    size="small"
+                    label="Link to existing Documents"
+                    placeholder="Search by ID, Subject, Name"
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <Typography variant="body2" fontWeight="bold">
+                        {option.type.toUpperCase()} - {option.id}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {option.subject} | {option.folder_name} | {option.date}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Button variant="outlined" component="label" fullWidth sx={{ mt: 1 }}>
+                Choose PDF/DOCX File(s)...
+                <input type="file" hidden multiple accept=".pdf,.doc,.docx" onChange={(e) => setNewDraftFiles([...e.target.files])} />
+              </Button>
+              {newDraftFiles.length > 0 && (
+                <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {newDraftFiles.map((file, idx) => (
+                    <Chip
+                      key={idx}
+                      label={`${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`}
+                      onDelete={() => setNewDraftFiles(newDraftFiles.filter((_, i) => i !== idx))}
+                      color="secondary"
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+              )}
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadDraftOpen(false)}>Cancel</Button>
+          <Button onClick={handleDirectUpload} color="primary" variant="contained">Upload Draft</Button>
+        </DialogActions>
+      </Dialog>
+
+      <DocumentViewerModal
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        fileUrl={viewerUrl}
+        fileName={viewerName}
+        isPdf={isPdf}
+      />
     </Box>
   );
 }

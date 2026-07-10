@@ -25,18 +25,32 @@ import {
   DialogContent,
   DialogActions,
   Card,
-  CardContent
+  CardContent,
+  Divider
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DeleteIcon from '@mui/icons-material/Delete';
+import HistoryIcon from '@mui/icons-material/History';
 import { useAuth } from '../App.jsx';
-
-function OutwardRow({ row, onAction, user }) {
+import EditHistoryModal from '../components/EditHistoryModal.jsx';
+import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
+import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
+import VisualFamilyTree from '../components/VisualFamilyTree.jsx';
+function OutwardRow({ row, onAction, onViewFile, setTreeDocId }) {
   const [open, setOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const navigate = useNavigate();
+
+  const handleAction = (action, row) => {
+    if (action === 'history') {
+      setHistoryOpen(true);
+    } else {
+      onAction(action, row);
+    }
+  };
 
   return (
     <>
@@ -87,6 +101,58 @@ function OutwardRow({ row, onAction, user }) {
                 </Grid>
               </Grid>
 
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" color="text.secondary">Attachments:</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
+                    {row.attachment_paths && row.attachment_paths.length > 0 ? (
+                      row.attachment_paths.map((path, idx) => (
+                        <Chip
+                          key={idx}
+                          label={path.split('/').pop()}
+                          size="small"
+                          color="primary"
+                          icon={<VisibilityIcon />}
+                          onClick={() => onViewFile(path)}
+                          clickable
+                        />
+                      ))
+                    ) : row.document_path ? (
+                        <Chip
+                          label={row.document_path.split('/').pop()}
+                          size="small"
+                          color="primary"
+                          icon={<VisibilityIcon />}
+                          onClick={() => onViewFile(row.document_path)}
+                          clickable
+                        />
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">No attachments</Typography>
+                    )}
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" color="text.secondary">Linked Documents:</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
+                    {row.linked_documents && row.linked_documents.length > 0 ? (
+                      row.linked_documents.map((docId, idx) => (
+                        <Chip key={idx} label={docId} size="small" variant="outlined" />
+                      ))
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">No linked documents</Typography>
+                    )}
+                  </Box>
+                  <Button 
+                    size="small" 
+                    variant="text" 
+                    onClick={() => setTreeDocId(`outward:${row.folder_id}:${row.year}:${row.outward_no}`)}
+                    sx={{ mt: 1 }}
+                  >
+                    View Visual Family Tree
+                  </Button>
+                </Grid>
+              </Grid>
+
               <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
                 {/* Edit Details (FR-094) */}
                 <Button
@@ -99,32 +165,39 @@ function OutwardRow({ row, onAction, user }) {
                   Edit Details
                 </Button>
 
-                {/* Open Document (FR-094) */}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<VisibilityIcon />}
-                  href={`/api/outward/view-document?path=${row.document_path}`}
-                  target="_blank"
-                >
-                  Open Document
-                </Button>
 
                 {/* Delete (FR-095) */}
                 <Button
                   variant="outlined"
                   color="error"
                   startIcon={<DeleteIcon />}
-                  onClick={() => onAction('delete', row)}
+                  onClick={() => handleAction('delete', row)}
                   disabled={row.is_pending_deletion}
                 >
                   Delete Record
+                </Button>
+
+                {/* Edit History (FR-058) */}
+                <Button
+                  variant="outlined"
+                  color="info"
+                  startIcon={<HistoryIcon />}
+                  onClick={() => handleAction('history', row)}
+                >
+                  Edit History
                 </Button>
               </Box>
             </Box>
           </Collapse>
         </TableCell>
       </TableRow>
+
+      <EditHistoryModal 
+        open={historyOpen} 
+        onClose={() => setHistoryOpen(false)} 
+        recordType="outward" 
+        recordId={`${row.folder_id}:${row.year}:${row.outward_no}`} 
+      />
     </>
   );
 }
@@ -134,13 +207,17 @@ export default function OutwardRegisterPage() {
   const [results, setResults] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear] = useState(new Date().getFullYear().toString());
   
-  // Search state (FR-093)
-  const [searchFolderId, setSearchFolderId] = useState('');
-  const [searchPrep, setSearchPrep] = useState('');
-  const [searchTo, setSearchTo] = useState('');
+  // Advanced Search state
+  const [advSearchOpen, setAdvSearchOpen] = useState(false);
+  const [searchFolder, setSearchFolder] = useState('');
+  const [searchPreparedBy, setSearchPreparedBy] = useState('');
+  const [searchAddressTo, setSearchAddressTo] = useState('');
   const [searchSubject, setSearchSubject] = useState('');
+  const [searchStatus, setSearchStatus] = useState('');
+  const [searchDateFrom, setSearchDateFrom] = useState('');
+  const [searchDateTo, setSearchDateTo] = useState('');
   
   // Master lists
   const [usersList, setUsersList] = useState([]);
@@ -149,12 +226,22 @@ export default function OutwardRegisterPage() {
   // Modal state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
+  const [fileToView, setFileToView] = useState(null);
+  
+  // Visual Family Tree state
+  const [treeDocId, setTreeDocId] = useState(null);
+
+  // Document Viewer state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState('');
+  const [viewerName, setViewerName] = useState('');
+  const [isPdf, setIsPdf] = useState(false);
   
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: currentYear - 2006 + 2 }, (_, i) => 2006 + i).reverse();
+  const years = ["All", ...Array.from({ length: currentYear - 2006 + 2 }, (_, i) => 2006 + i).reverse()];
 
   // Load Folder Types and Users for search dropdowns
   useEffect(() => {
@@ -169,10 +256,13 @@ export default function OutwardRegisterPage() {
           year,
           page,
           limit: 15,
-          search_folder_id: searchFolderId || undefined,
-          search_prepared_by: searchPrep || undefined,
-          search_address_to: searchTo || undefined,
-          search_subject: searchSubject || undefined
+          search_folder_id: searchFolder || undefined,
+          search_prepared_by: searchPreparedBy || undefined,
+          search_address_to: searchAddressTo || undefined,
+          search_subject: searchSubject || undefined,
+          search_status: searchStatus || undefined,
+          search_date_from: searchDateFrom || undefined,
+          search_date_to: searchDateTo || undefined
         }
       });
       setResults(response.data.results);
@@ -186,11 +276,29 @@ export default function OutwardRegisterPage() {
     fetchRegister();
   }, [year, page]);
 
-  // Live search trigger (FR-093)
-  useEffect(() => {
+  const handleApplySearch = () => {
     setPage(1);
     fetchRegister();
-  }, [searchFolderId, searchPrep, searchTo, searchSubject]);
+  };
+
+  const handleClearSearch = () => {
+    setSearchFolder('');
+    setSearchPreparedBy('');
+    setSearchAddressTo('');
+    setSearchSubject('');
+    setSearchStatus('');
+    setSearchDateFrom('');
+    setSearchDateTo('');
+    setYear(new Date().getFullYear().toString());
+    setPage(1);
+  };
+
+  // Trigger search when clearing if needed
+  useEffect(() => {
+    if (!searchFolder && !searchPreparedBy && !searchAddressTo && !searchSubject && !searchStatus && !searchDateFrom && !searchDateTo) {
+      fetchRegister();
+    }
+  }, [searchFolder, searchPreparedBy, searchAddressTo, searchSubject, searchStatus, searchDateFrom, searchDateTo]);
 
   const handleAction = (action, row) => {
     if (action === 'delete') {
@@ -213,6 +321,15 @@ export default function OutwardRegisterPage() {
     }
   };
 
+  const handleViewFile = (path) => {
+    const filename = path.split('\\').pop().split('/').pop();
+    const isPdfFile = filename.toLowerCase().endsWith('.pdf');
+    setViewerUrl(`/api/outward/view-document?path=${encodeURIComponent(path)}`);
+    setViewerName(filename);
+    setIsPdf(isPdfFile);
+    setViewerOpen(true);
+  };
+
   return (
     <Box sx={{ width: '100%', maxWidth: 1000, mt: 2 }}>
       {/* Header bar and year filter */}
@@ -229,7 +346,7 @@ export default function OutwardRegisterPage() {
             size="small"
             value={year}
             onChange={(e) => {
-              setYear(parseInt(e.target.value));
+              setYear(e.target.value);
               setPage(1);
             }}
             sx={{ width: 110 }}
@@ -244,73 +361,61 @@ export default function OutwardRegisterPage() {
       {successMsg && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{successMsg}</Alert>}
       {errorMsg && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{errorMsg}</Alert>}
 
-      {/* Live Search Controls (FR-093) */}
-      <Card sx={{ mb: 3, border: '1px solid #D1D5DB' }}>
-        <CardContent sx={{ p: 2 }}>
-          <Grid container spacing={2} alignItems="center">
-            {/* Folder ID Dropdown */}
-            <Grid item xs={12} sm={3}>
-              <TextField
-                select
-                fullWidth
-                size="small"
-                label="Filter Folder ID"
-                value={searchFolderId}
-                onChange={(e) => setSearchFolderId(e.target.value)}
-              >
-                <MenuItem value="">-- All Folders --</MenuItem>
-                {folderTypes.map(f => (
-                  <MenuItem key={f.folder_id} value={f.folder_id}>{f.folder_id}</MenuItem>
-                ))}
-              </TextField>
+      {/* Advanced Search Controls */}
+      <Card sx={{ mb: 3, border: '1px solid #E8EAED', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, cursor: 'pointer' }} onClick={() => setAdvSearchOpen(!advSearchOpen)}>
+          <Typography variant="subtitle1" fontWeight={600}>Advanced Search & Filters</Typography>
+          {advSearchOpen ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+        </Box>
+        <Collapse in={advSearchOpen}>
+          <Divider />
+          <CardContent sx={{ p: 2 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={3}>
+                <TextField select fullWidth size="small" label="Folder" value={searchFolder} onChange={(e) => setSearchFolder(e.target.value)}>
+                  <MenuItem value="">-- All --</MenuItem>
+                  {folderTypes.map(f => <MenuItem key={f.folder_id} value={f.folder_id}>{f.folder_name}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField select fullWidth size="small" label="Status" value={searchStatus} onChange={(e) => setSearchStatus(e.target.value)}>
+                  <MenuItem value="">-- All --</MenuItem>
+                  <MenuItem value="Active">Active</MenuItem>
+                  <MenuItem value="Locked">Locked</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField type="date" fullWidth size="small" label="Date From" value={searchDateFrom} onChange={(e) => setSearchDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField type="date" fullWidth size="small" label="Date To" value={searchDateTo} onChange={(e) => setSearchDateTo(e.target.value)} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              
+              <Grid item xs={12} sm={3}>
+                <TextField select fullWidth size="small" label="Prepared By" value={searchPreparedBy} onChange={(e) => setSearchPreparedBy(e.target.value)}>
+                  <MenuItem value="">-- All --</MenuItem>
+                  {usersList.map(u => <MenuItem key={u.user_id} value={u.user_id}>{u.name}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField fullWidth size="small" label="Address To" value={searchAddressTo} onChange={(e) => setSearchAddressTo(e.target.value)} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Subject" value={searchSubject} onChange={(e) => setSearchSubject(e.target.value)} />
+              </Grid>
             </Grid>
-
-            {/* Prepared By Dropdown */}
-            <Grid item xs={12} sm={3}>
-              <TextField
-                select
-                fullWidth
-                size="small"
-                label="Search Prepared By"
-                value={searchPrep}
-                onChange={(e) => setSearchPrep(e.target.value)}
-              >
-                <MenuItem value="">-- All Officers --</MenuItem>
-                {usersList.map(u => (
-                  <MenuItem key={u.user_id} value={u.user_id}>{u.name}</MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-
-            {/* Address To Text search */}
-            <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Search Address To..."
-                value={searchTo}
-                onChange={(e) => setSearchTo(e.target.value)}
-              />
-            </Grid>
-
-            {/* Subject Text search */}
-            <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Search Subject..."
-                value={searchSubject}
-                onChange={(e) => setSearchSubject(e.target.value)}
-              />
-            </Grid>
-          </Grid>
-        </CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 2 }}>
+              <Button variant="outlined" color="secondary" onClick={handleClearSearch}>Clear</Button>
+              <Button variant="contained" color="primary" onClick={handleApplySearch}>Search</Button>
+            </Box>
+          </CardContent>
+        </Collapse>
       </Card>
 
       {/* Paginated Data Grid */}
-      <TableContainer component={Paper} sx={{ border: '1px solid #D1D5DB' }}>
+      <TableContainer component={Paper} sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
         <Table size="small">
-          <TableHead sx={{ bgcolor: '#1E5AA8 !important' }}>
+          <TableHead>
             <TableRow>
               <TableCell width={50} />
               <TableCell sx={{ fontWeight: 600 }}>Outward No.</TableCell>
@@ -332,7 +437,7 @@ export default function OutwardRegisterPage() {
               </TableRow>
             ) : (
               results.map((row) => (
-                <OutwardRow key={row.outward_no} row={row} onAction={handleAction} user={user} />
+                <OutwardRow key={`${row.folder_id}-${row.year}-${row.outward_no}`} row={row} onAction={handleAction} user={user} onViewFile={handleViewFile} setTreeDocId={setTreeDocId} />
               ))
             )}
           </TableBody>
@@ -363,6 +468,21 @@ export default function OutwardRegisterPage() {
           <Button onClick={executeDelete} color="error" variant="contained">Request Delete</Button>
         </DialogActions>
       </Dialog>
+
+      <DocumentViewerModal
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        fileUrl={viewerUrl}
+        fileName={viewerName}
+        isPdf={isPdf}
+      />
+      
+      {/* Visual Family Tree Dialog */}
+      <VisualFamilyTree
+        open={Boolean(treeDocId)}
+        onClose={() => setTreeDocId(null)}
+        docId={treeDocId}
+      />
     </Box>
   );
 }

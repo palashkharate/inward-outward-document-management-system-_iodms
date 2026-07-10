@@ -1,95 +1,188 @@
-# IODMS Color Philosophy
-
-## Core Design Principle
-
-**"Mission Critical Documentation System"**
-
-The interface should communicate:
-
-* Trust
-* Accuracy
-* Security
-* Readability
-* Speed
-* Long-hour usability
-* Government professionalism
-
-Not:
-
-* Startup
-* Social media
-* Fancy SaaS
-* Marketing website
-* Gaming dashboard
+# IODMS — Design Philosophy (v3)
+## Premium Government Portal — Apple × Google Workspace
 
 ---
 
-# Emotional Positioning
+### 🎯 Vision Statement
 
-| Attribute     | Visual Feeling |
-| ------------- | -------------- |
-| Defence       | Strong, structured, disciplined |
-| Air-gapped    | Secure, internal, no external fluff |
-| Engineering   | Precise, clean, technical |
-| Long-hours    | Calm, high-contrast, low eye-strain |
+> Every pixel should feel intentional. If Google Workspace and Apple's system apps had a government-sector child, it would look like IODMS.
 
 ---
 
-# The Palette
+### Design Principles
 
-**CRITICAL RULE: 7:1 Contrast Ratio**
-Since officers will look at this for 8 hours a day, readability is the absolute priority. No "cool" low-contrast grey-on-grey. 
-
-| Element | Color Name | Hex Code | Why? |
-| :--- | :--- | :--- | :--- |
-| **Primary Brand** | HAL Defence Navy | `#0B2545` | Replaces the bright blue. Commands authority and security. Used for the main top bar and primary buttons. |
-| **Secondary Accent**| Technical Blue | `#1E5AA8` | Used for links, secondary buttons, and active states. Brighter than Navy, but still professional. |
-| **Background** | Workspace Grey | `#F8FAFC` | Not pure white. A very subtle, cool grey to reduce screen glare during long shifts. |
-| **Card / Paper** | Operations White | `#FFFFFF` | For forms and tables to stand out cleanly against the Workspace Grey. |
-| **Borders / Lines**| Aircraft Silver | `#D1D5DB` | Clean division without being harsh. |
-| **Text Primary** | Charcoal | `#111827` | Never use pure `#000000`. Charcoal is softer on the eyes but maintains high contrast. |
-| **Text Secondary**| Muted Slate | `#6B7280` | For helper text, timestamps, and minor labels. |
-| **Error / Alert** | Critical Red | `#E53935` | Used sparingly for errors, deletions, and the Auditor watermark. |
-| **Success / Sent**| Dispatch Green | `#2E7D32` | Used to confirm an outward file has been dispatched. |
+| # | Principle | What it means |
+|---|-----------|---------------|
+| 1 | **Whitespace = Premium** | Generous padding (24px+ on cards), breathing room between elements. Never crowd. |
+| 2 | **Depth Through Layering** | Cards float with soft shadows. Active elements lift on hover. Dialogs blur the backdrop. |
+| 3 | **Color Sparingly** | 90% monochrome (white/gray). Color = action or status indicator. Never decorative. |
+| 4 | **Motion = Meaning** | 200ms ease-out transitions on all interactive elements. Every state change has a smooth transition. |
+| 5 | **Typography Hierarchy** | Clear visual weight: Page title → Section label → Body → Caption. Weight descends 800 → 600 → 400 → 300. |
+| 6 | **Consistent Radius** | Small (chips, badges) = `4px`. Medium (buttons, inputs) = `8px`. Large (cards, dialogs) = `12px`. XL (login card) = `20px`. |
+| 7 | **Accessible Contrast** | All text passes WCAG AA (4.5:1 minimum). Error red on white = 4.8:1 ✅. Secondary gray on white = 4.6:1 ✅. |
 
 ---
 
-# Module Color Identifiers
+### Core Palette
 
-To prevent errors (e.g. logging an inward file while thinking you are in the outward register), each major module will have a distinct, subtle color identity. This will be applied as a top border accent on the main card or the header text color for that specific section.
+| Role | Name | Hex | Usage |
+|------|------|-----|-------|
+| Primary | Google Blue | `#1A73E8` | Primary buttons, active nav, links, key actions |
+| Primary Dark | Deep Blue | `#1557B0` | Hover states on primary buttons |
+| Primary Light | Pale Blue | `#E8F0FE` | Active nav bg, table header bg, info chip bg |
+| Secondary | Teal Accent | `#00897B` | Secondary actions, success indicators, dispatch |
+| Background | Clean White | `#FFFFFF` | Page backgrounds |
+| Surface | Soft Gray | `#F8F9FA` | Cards, panels, elevated surfaces, page bg |
+| Surface Alt | Zebra Gray | `#FAFBFC` | Even table row backgrounds |
+| Text Primary | Google Dark | `#202124` | Body text, headings |
+| Text Secondary | Google Gray | `#5F6368` | Secondary text, labels, placeholders |
+| Border | Light Border | `#E8EAED` | All borders, dividers, input outlines |
+| Error | Google Red | `#D93025` | Error states, destructive actions |
+| Error Light | Pale Red | `#FCE8E6` | Error chip backgrounds |
+| Success | Google Green | `#188038` | Confirmed, completed, dispatched |
+| Success Light | Pale Green | `#E6F4EA` | Success chip backgrounds |
+| Warning | Google Yellow | `#F9AB00` | Pending, attention needed |
+| Warning Light | Pale Yellow | `#FEF7E0` | Warning chip backgrounds |
+| Info | Google Blue | `#1A73E8` | Informational badges |
 
-| Module | Identifier Color | Hex | Rationale |
-| :--- | :--- | :--- | :--- |
-| **Dashboard** | Dashboard Blue | `#1E5AA8` | The standard, neutral starting point. |
-| **Compose Outward**| Brand Navy | `#0B2545` | The most "official" action, uses the primary brand color. |
-| **Drafts & Dispatch**| Dispatch Teal | `#0F766E` | Denotes movement and sending. |
-| **Log Inward** | Inward Sky | `#0284C7` | Lighter, welcoming for incoming data entry. |
-| **Inward Register**| Deep Blue | `#1E40AF` | A solid, archival color for searching past records. |
-| **Outward Register**| Indigo | `#4338CA` | Distinct from Inward to prevent confusion when searching. |
-| **Address Book** | Slate | `#6B7280` | A neutral utility color for the directory. |
-| **Admin Panel** | Warm Brown | `#7C2D12` | Very distinct. If you see brown, you know you are changing system settings. |
-| **Auditor View** | Critical Red | `#B91C1C` | High alert. Immediate visual cue that this is a restricted, view-only mode. |
-| **My Profile** | Steel Blue | `#334155` | Personal, quiet, administrative. |
+> **IMPORTANT: Border color is `#E8EAED` everywhere.** The codebase previously had a mix of `#D1D5DB`, `#DADCE0`, and `#E8EAED`. Standardize to `#E8EAED` only.
 
 ---
 
-# Specific UI Component Rules
+### Module Color Identifiers (Accent Bars)
 
-1. **The Sidebar:**
-   * **Background:** HAL Defence Navy (`#0B2545`).
-   * **Text:** White (`#FFFFFF`).
-   * **Active Item:** Do not use bright neon highlights. Use a subtle lighter navy or a white semi-transparent overlay (`rgba(255, 255, 255, 0.15)`).
+Each module page has a distinctive accent color used for the top border of its header card:
 
-2. **Tables (The Registers):**
-   * **Header Row:** HAL Defence Navy (`#0B2545`) background with White text. This anchors the data.
-   * **Rows:** Alternating subtle zebra striping is okay, but pure white is preferred with Aircraft Silver (`#D1D5DB`) borders.
-   * **Row Hover:** Very subtle blue (`#EFF6FF`).
+| Module | Accent Color | Hex |
+|--------|-------------|-----|
+| Dashboard | Google Blue | `#1A73E8` |
+| Compose Outward | Deep Blue | `#1557B0` |
+| Drafts & Dispatch | Teal | `#00897B` |
+| Log Inward | Sky Blue | `#039BE5` |
+| Inward Register | Indigo | `#3F51B5` |
+| Outward Register | Purple | `#7B1FA2` |
+| Address Book | Blue Gray | `#546E7A` |
+| Admin Panel | Orange | `#E65100` |
+| Auditor View | Red | `#D93025` |
+| My Profile | Teal | `#00897B` |
 
-3. **Forms (Compose & Log Inward):**
-   * Clean white cards.
-   * Inputs should have Aircraft Silver borders.
-   * On focus (when clicking inside), the border should change to Technical Blue (`#1E5AA8`) with a slight glow.
+---
 
-4. **Auditor View:**
-   * **Background:** Very faint red (`#FFF8F8`).
-   * **Watermark:** The "AUDITOR MODE - READ ONLY" watermark must be Critical Red (`#E53935`) but set to 10% opacity so it doesn't obscure the text.
+### Shadows (Apple-Style Layered)
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| shadow-sm | `0 1px 2px rgba(0,0,0,0.04)` | Default card resting state |
+| shadow-md | `0 2px 8px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)` | Elevated cards, dropdowns |
+| shadow-lg | `0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)` | Modals, popovers |
+| shadow-xl | `0 16px 48px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.06)` | Dialogs, login card |
+| shadow-hover | `0 4px 16px rgba(26,115,232,0.15)` | Button hover, card hover |
+
+---
+
+### Transitions
+
+| Context | Duration | Easing | Example |
+|---------|----------|--------|---------|
+| Hover states | `150ms` | `ease` | Button color, card shadow lift |
+| State changes | `200ms` | `cubic-bezier(0.4, 0, 0.2, 1)` | Input focus glow, chip appear |
+| Layout shifts | `300ms` | `cubic-bezier(0.4, 0, 0.2, 1)` | Row expand/collapse, page fade |
+| Button press | `100ms` | `ease-out` | `transform: scale(0.98)` on `:active` |
+
+---
+
+### Component Rules
+
+#### Sidebar
+- Background: `#FFFFFF`, border-right: `1px solid #E8EAED`
+- Nav items: `#5F6368` text, `500` weight, `0.95rem`
+- Active item: `#E8F0FE` bg + `#1A73E8` text + `700` weight + 3px left accent border
+- Hover: `rgba(0,0,0,0.04)` bg with smooth transition
+- Logout: `#D93025` text, hover bg `rgba(229,57,53,0.06)`
+
+#### AppBar
+- Background: `#FFFFFF`, border-bottom: `1px solid #E8EAED`, boxShadow: none
+- Page title in `subtitle1` weight `600`
+- User section: avatar (initials, blue bg) + name + dropdown arrow
+
+#### Buttons
+- Primary: `#1A73E8` fill, white text, borderRadius: 8px, shadow, hover lift
+- Secondary/Outlined: `#1A73E8` border (1.5px), transparent bg, hover `rgba(26,115,232,0.04)`
+- Destructive: `#D93025` fill, white text
+- All buttons: fontWeight: 600, textTransform: none, padding: 8px 20px
+- Hover: translateY(-1px) + shadow increase
+- Active: scale(0.98) press effect
+
+#### Cards
+- Background: `#FFFFFF`, borderRadius: 12px, border: 1px solid `#E8EAED`
+- Resting shadow: shadow-sm
+- Hover: shadow-md (only on interactive cards like dashboard quick-actions)
+- Module header cards: top border 4px solid {module_accent_color}
+
+#### Tables
+- Header: `#E8F0FE` bg, `#1A73E8` text, 600 weight, 0.8rem, uppercase
+- Even rows: `#FAFBFC` (zebra striping)
+- Hover: `#F1F3F4` with 150ms transition
+- Sticky headers on scroll
+- Pending deletion rows: `#FEF2F2` bg + 3px solid `#D93025` left border
+
+#### Inputs (TextFields)
+- Border: 1px solid `#E8EAED`, borderRadius: 8px
+- Focus: border `#1A73E8` + box-shadow: 0 0 0 3px rgba(26,115,232,0.12) (blue glow ring)
+- Labels: animated float-up on focus (MUI default)
+
+#### Chips
+- Success: bg `#E6F4EA`, text `#188038`
+- Error: bg `#FCE8E6`, text `#D93025`
+- Warning: bg `#FEF7E0`, text `#E37400`
+- Info: bg `#E8F0FE`, text `#1A73E8`
+- All: borderRadius: 6px, fontWeight: 500
+
+#### Dialogs
+- Paper: borderRadius: 16px, shadow-xl
+- Backdrop: blur(4px) + rgba(0,0,0,0.3)
+
+#### Alerts
+- borderRadius: 8px
+- Slide-in from top on appear
+
+#### Login Page
+- Full-bleed Su-30MKI background with dark gradient overlay
+- Glassmorphic card: rgba(255,255,255,0.92), backdrop-filter: blur(20px), borderRadius: 20px
+- HAL Logo with subtle glow: filter: drop-shadow(0 0 20px rgba(26,115,232,0.3))
+- Sign In button: gradient linear-gradient(135deg, #1A73E8, #1557B0)
+- Footer: semi-transparent on dark overlay
+
+#### Auditor View
+- Page background: `#FFF8F8` (faint red)
+- Watermark: `#D93025` at 10% opacity, rotated -35deg
+- user-select: none + right-click disabled
+
+---
+
+### Typography Scale
+
+| Element | Variant | Weight | Size | Color |
+|---------|---------|--------|------|-------|
+| Page Title | h5 | 700 | 1.5rem | `#202124` |
+| Section Heading | subtitle1 | 600 | 1.1rem | `#202124` |
+| Card Title | h6 | 700 | 1.25rem | `#202124` |
+| Body Text | body1 | 400 | 1rem | `#202124` |
+| Secondary Text | body2 | 400 | 0.875rem | `#5F6368` |
+| Table Header | custom | 600 | 0.8rem | `#1A73E8` (uppercase) |
+| Caption/Label | caption | 400 | 0.75rem | `#5F6368` |
+| Stat Number | h3 | 800 | 2.5rem | `#202124` |
+
+### Font Stack
+```
+'Outfit', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif
+```
+Outfit is the primary font. For air-gapped deployment, the font files must be served locally from `frontend/public/fonts/`.
+
+---
+
+### Icon Guidelines
+- Use MUI Icons (Material Symbols Outlined variant)
+- Active nav icons: filled variant (switch from outlined to filled)
+- Size: 20px in nav, 24px in content, 40px+ in stat cards
+- Color matches text color of parent element

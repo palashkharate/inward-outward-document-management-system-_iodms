@@ -272,6 +272,8 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | FR-014 | A **Logout** option shall be available at all times from the navigation bar |
 | FR-015 | Password reset can be performed by the Admin on behalf of any user from the Admin Panel |
 | FR-016 | No SSO, no OTP, no email-based reset — credential-based authentication only |
+| FR-017 | **Auto-Logout on Tab Close**: The session token shall be stored in `sessionStorage` rather than `localStorage`, ensuring the user is automatically logged out when the browser tab or window is closed. |
+| FR-018 | **Auto-Save Drafts**: Any progress typed into Compose Draft or Log Inward forms is continuously auto-saved to `sessionStorage` so it can be restored if the user accidentally reloads the page. |
 
 ---
 
@@ -280,7 +282,7 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | FR ID | Requirement |
 |---|---|
 | FR-020 | On login, display a welcome screen showing the logged-in user's name and role |
-| FR-021 | If today matches any registered user's date of birth, display a full-page birthday background image on first load of the day (shown once per login session only), with the birthday user's name rendered in **Times New Roman, centred, middle of screen** |
+| FR-021 | **Birthday Overlay**: On dashboard load, if any officer/admin has a birthday today, a colorful animated greeting card overlay appears with cake emoji (🎂), confetti-style gradient background, and the birthday person's name(s) stacked centrally. It auto-shows once per day on first login. Users can reopen the greeting at any time by clicking a balloon icon (🎈) in the header. |
 | FR-022 | If multiple users share the same birthday, display all their names stacked centrally |
 | FR-023 | Navigation sidebar/topbar shall provide links to all modules accessible to the current user's role |
 
@@ -319,12 +321,15 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 |---|---|
 | FR-050 | Display a table of all records in `draft_files` with columns: **Outward No.**, **Folder ID**, **Folder Name**, **Date**, **Address To**, **Subject**, **Remarks**, **Prepared By**, **Created On** |
 | FR-051 | Clicking any row reveals two action buttons inline: **Open / Edit in MS Word** and **Dispatch** |
-| FR-052 | **Open / Edit in MS Word**: checks `is_locked`; if locked by another user, show error dialog: *"This draft is currently being edited by [User Name]. Please try again later."*; if not locked, set `is_locked = true`, `locked_by = current user`, and open the file via the LAN shared path in MS Word; when the user closes/saves in Word, the lock is released (`is_locked = false`) |
+| FR-052 | **Download–Edit–Re-upload with Pessimistic Locking**: When a user clicks "Edit" on a draft, the system locks the file (`is_locked = true`, `locked_by`, `locked_at` timestamp). The user downloads the file, edits in MS Word, and re-uploads via a dedicated re-upload button. Other users see "Currently being edited by [User Name]" and can only view (read-only). Locks auto-expire after 30 minutes of inactivity. Admin can force-release any lock. |
 | FR-053 | Lock release mechanism: provide a manual **"Release Lock"** button visible to Admin at all times; for the editing user, lock is released on next page load after Word is closed *(auto-sync via LAN share)* |
 | FR-054 | **Dispatch**: clicking Dispatch moves the draft to `outward_register`; renames the file from `fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc` to the next sequential number (e.g. `004.doc`) and moves it to `IODMS/Outward/{Year}/{FolderID}/`; sets `issuing_date` to today; removes record from `draft_files` |
-| FR-055 | The **Outward No.** is pre-assigned at the time the user clicks **New** in Compose Outward (i.e. reserved immediately, before saving the draft) to prevent number conflicts |
+| FR-055 | The **Outward No.** is pre-assigned at the time the user clicks **New** in Compose Outward (i.e. reserved immediately, before saving the draft) to prevent number conflicts. An officer cannot allocate a new Outward number if they already have an existing undispatched draft. |
 | FR-056 | **Discard Draft**: soft-deletes the draft record; flags it in `pending_deletions` for Admin approval; draft file on disk is not deleted until Admin approves; draft is hidden from the table immediately after flagging |
 | FR-057 | All users can see all drafts (no per-user filtering) |
+| FR-057a | **Upload Existing Document to Draft**: User can upload an existing PDF or document file directly to drafts via an upload button, without going through the Compose Outward form. The file is stored in the Drafts directory structure. |
+| FR-058 | **Edit Audit Log**: Every create, edit, lock, unlock, dispatch, or re-upload action on any register record (inward, outward, draft) is logged in an `edit_log` table with: `edited_by` (user ID), `edited_at` (timestamp), `changes` (JSONB diff of before/after), and `action` (create/edit/lock/unlock/dispatch/reupload). An "Edit History" button on each expanded row shows the log in a timeline-style popover. |
+| FR-059 | **In-Browser Document Viewer**: Documents (PDF, DOCX) open in a full-screen modal viewer within the browser. PDFs use browser-native `<iframe>` rendering. DOCX files use the `docx-preview` library for layout-accurate rendering. Falls back to download link for unsupported formats. Applies to Inward Register (FR-083), Outward Register (FR-094), and Drafts view. |
 
 ---
 
@@ -361,10 +366,12 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | FR ID | Requirement |
 |---|---|
 | FR-080 | Display a paginated table with columns: **Inward No.**, **Date of Receipt**, **Inward Letter Ref No.**, **Letter Date**, **Received From**, **Subject**, **Originated By**, **Assign To**, **Folder ID**, **CC Sent To**, **Remarks**, **Document Type**, **Status** |
-| FR-081 | **Year filter** — dropdown at top of page; filters entire table by year; defaults to current year |
+| FR-081 | **Year filter** — dropdown at top of page; filters entire table by year; defaults to current year; includes an "All Years" option to search across all years (FR-173) |
 | FR-082 | **Search bar** — filters rows by: Assign To (dropdown of User IDs), Received From (text), Originated By (text), Subject (text); search is live/on-change |
-| FR-083 | Clicking a row expands two action options inline: **Edit Details** (opens Log Inward in Modify mode pre-filled) and **View File** (opens the attached file from its stored path) |
-| FR-084 | **Delete** — users may flag a record for deletion; it is added to `pending_deletions` and greyed out in the table with a "Pending Deletion" badge until Admin approves or rejects |
+| FR-083 | **In-Browser File View**: Inward attachments open in a full-screen in-browser viewer modal (PDF via `<iframe>`, DOCX via `docx-preview` library) instead of downloading to a new tab. |
+| FR-084 | **Delete** — users may flag a record for deletion; it is added to `pending_deletions` and greyed out in the table with a "Pending Deletion" badge until Admin approves or rejects. If Admin approves, the physical file is deleted, but the record is kept with status 'Permanently Deleted' to ensure the number is permanently lost and never reused. These lost numbers appear in a separate Admin panel tab. |
+| FR-170 | **Multiple File Upload**: Inward Register supports uploading multiple files (e.g., both .ppt and .doc) for a single record. Files are stored as an array of paths. |
+| FR-171 | **Document Linking**: Users can link related documents across registers (Inward to Outward, Inward to Inward, etc.). Linked documents display as clickable chips on the record details. |
 
 ---
 
@@ -374,10 +381,12 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 |---|---|
 | FR-090 | Display a paginated table with columns: **Outward No.**, **Folder ID**, **Folder Name**, **Issuing Date**, **Address To**, **CC To**, **Subject**, **Remarks**, **Prepared By** |
 | FR-091 | **Address To** and **CC To** columns display all entries in a single cell (comma-separated names); no expand required |
-| FR-092 | **Year filter** — dropdown; defaults to current year |
+| FR-092 | **Year filter** — dropdown; defaults to current year; includes an "All Years" option to search across all years (FR-173) |
 | FR-093 | **Search** — filter by: Folder ID (dropdown), Prepared By (dropdown of User IDs), Address To (text), Subject (text) |
-| FR-094 | Clicking a row expands two action options inline: **Edit Details** (opens Compose Outward in Modify mode pre-filled) and **Open Document** (opens the `.doc` file from its stored path) |
-| FR-095 | **Delete** — same soft-delete/pending flow as Inward Register |
+| FR-094 | **In-Browser Document View**: Outward documents open in a full-screen in-browser viewer modal instead of downloading. |
+| FR-095 | **Delete** — same soft-delete/pending flow and permanent loss rules as Inward Register |
+| FR-170b| **Multiple File Upload**: Outward Register and Drafts support multiple file uploads for a single record. |
+| FR-171b| **Document Linking**: Outward Register supports linking to Inward and other Outward documents. |
 
 ---
 
@@ -407,6 +416,8 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | FR-112 | **Edit User**: Admin may edit any field for any user directly |
 | FR-113 | **Activate / Deactivate**: toggle user account status |
 | FR-114 | **Reset Password**: Admin may set a new password for any user |
+| FR-115 | **Delete User (Soft Delete)**: Admin can delete a user account. The user record is marked `is_deleted = true` with `deleted_at` timestamp and `deleted_by` (admin user ID). Deleted users cannot log in. All their existing inward/outward records are preserved. |
+| FR-116 | **Deleted Accounts View**: A new tab "Deleted Accounts" in the Admin Panel displays all soft-deleted users with columns: User ID, Name, Role, Deleted On, Deleted By. Admin may **Restore** (set `is_deleted = false`) or **Permanently Delete** (remove record entirely). |
 
 #### 9B — Pending Approvals — Deletion Requests
 
@@ -438,6 +449,9 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | FR-140 | **IODMS Root Path**: Admin may view and update the base filesystem path where the IODMS folder is located (to support server migrations); changing this path updates all future file read/write operations |
 | FR-141 | **New Year Cutover**: the system automatically resets sequential numbering on January 1 and creates the new `{Year}` subfolder structure; Admin may manually override the cutover date if needed |
 | FR-142 | **Direct Database Access**: a clearly labelled button **"Open in DBeaver"** launches DBeaver (must be pre-installed on the server machine); no embedded DB editor is provided within the application |
+| FR-143 | **Template Management**: Admin can upload, view, and delete document templates (.docx files) from a "Templates" tab in the Admin Panel. Each template has a name and type (General/Confidential/Secret). When a user composes an outward document, the selected template determines the base document structure used for draft generation. |
+| FR-144 | **Previous Year Document Entry**: Admin can create inward or outward records for a previous year from the System Settings. A year selector dropdown allows choosing the target year. The inward/outward number continues sequentially from the last number of that year's records. Files are stored in the selected year's folder structure (e.g., `Inward/2024/Su-30/`). |
+| FR-172 | **IP Address Configuration**: Admin Panel contains a "Security Settings" tab allowing Admin to whitelist/allow specific IP addresses or subnets. Logins from unapproved IPs are blocked. |
 
 ---
 
@@ -484,7 +498,7 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | EIR-001 | The system's frontend shall interface with client machines exclusively through Chromium-based web browsers; no non-Chromium browser support is required |
 | EIR-002 | The system shall not make any live internet calls during operation; all data exchange with the development/build environment shall occur via offline removable storage (USB) |
 | EIR-003 | The shared IODMS folder shall be accessible from all client machines via a LAN network share; for the current development/standalone phase, it shall be a local folder path configurable by Admin |
-| EIR-004 | MS Word (legacy `.doc` format) is the exclusive document editor; the system shall open `.doc` files via the LAN shared path directly in the client's installed MS Word; no in-browser document editing is provided |
+| EIR-004 | MS Word is the primary document editor. Users download `.doc`/`.docx` files via the system, edit in their locally installed MS Word, and re-upload the edited file through the application's re-upload interface. No in-browser document editing is provided; the system provides in-browser document viewing only. |
 | EIR-005 | DBeaver shall be pre-installed on the server machine; the Admin Panel provides a launch button only — no embedded database UI is built into the application |
 | EIR-006 | Scanner integration is out of scope for the current phase; file upload is via manual browse/drag-drop only |
 
@@ -517,7 +531,7 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 |---|---|---|
 | FS-001 | Desktop packaging | Electron or equivalent; defer to final phase |
 | FS-002 | Scanner SDK integration | Direct scan-to-upload from connected scanner; specs TBD |
-| FS-003 | Template configuration | `.doc` templates to be configured with placeholder tags once templates are finalised; current build creates file with placeholder markers only |
+| FS-003 | Template configuration | **MOVED TO ACTIVE — see FR-143** |
 | FS-004 | IODMS folder migration tool | Admin-triggered bulk move of IODMS folder to new server path with automatic path update |
 | FS-005 | Multi-file inward attachments | Currently one file per inward record; multi-attachment support deferred |
 

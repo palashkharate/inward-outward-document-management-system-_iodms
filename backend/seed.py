@@ -24,7 +24,7 @@ def seed_database():
                 user_id="admin",
                 pb_no="PB-001",
                 name="Chief Administrator",
-                dob=datetime.date(1980, 1, 1),
+                dob=datetime.date(1980, datetime.date.today().month, datetime.date.today().day),
                 password_hash=get_password_hash("admin123"), # default password
                 role="Admin",
                 is_active=True
@@ -109,15 +109,33 @@ def seed_database():
 
         # Save all DB changes
         db.commit()
+        
+        # Seed a default document template
+        default_template = db.query(models.DocumentTemplate).filter(models.DocumentTemplate.name == "Standard Letter").first()
+        if not default_template:
+            print("Seeding default Document Template...")
+            db.add(models.DocumentTemplate(
+                name="Standard Letter",
+                template_type="General",
+                file_path="Templates/standard_letter.docx",
+                uploaded_by="admin"
+            ))
+        db.commit()
         print("Database seeded successfully!")
 
         # 7. Create physical folder directories in IODMS Root Path (FR-140)
         root_path = get_iodms_root_path()
         print(f"Setting up storage directories in: {root_path}...")
-        for folder in ["Inward", "Outward", "Drafts"]:
+        for folder in ["Inward", "Outward", "Drafts", "Templates", "Trash"]:
             folder_path = os.path.join(root_path, folder)
             os.makedirs(folder_path, exist_ok=True)
             print(f"Created: {folder_path}")
+            
+        # Create a dummy template file
+        dummy_template = os.path.join(root_path, "Templates", "standard_letter.docx")
+        if not os.path.exists(dummy_template):
+            with open(dummy_template, "w", encoding="utf-8") as f:
+                f.write("Dummy Standard Letter Template content. In a real system, this is a binary docx file.")
 
         print("System setup is complete and ready.")
 

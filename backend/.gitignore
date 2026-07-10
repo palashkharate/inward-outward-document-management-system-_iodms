@@ -1,0 +1,8 @@
+venv/
+.venv/
+uv_venv/
+uv_venv311/
+__pycache__/
+settings.json
+*.db
+.pytest_cache/

@@ -105,7 +105,7 @@ export default function MyProfilePage() {
       <Grid container spacing={4}>
         {/* Left Side: General Profile Form (FR-150, FR-151) */}
         <Grid item xs={12} md={6}>
-          <Card sx={{ border: '1px solid #D1D5DB', height: '100%' }}>
+          <Card sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, height: '100%' }}>
             <CardContent sx={{ p: 4 }}>
               <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
                 Personnel Details
@@ -198,7 +198,7 @@ export default function MyProfilePage() {
 
         {/* Right Side: Change Password Form (FR-154) */}
         <Grid item xs={12} md={6}>
-          <Card sx={{ border: '1px solid #D1D5DB', height: '100%' }}>
+          <Card sx={{ border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 3, height: '100%' }}>
             <CardContent sx={{ p: 4 }}>
               <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
                 Update Password

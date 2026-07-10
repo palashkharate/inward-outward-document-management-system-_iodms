@@ -1,5 +1,6 @@
 import pytest
 import datetime
+import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -41,9 +42,22 @@ def client(db):
             yield db
         finally:
             pass
+            
+    from auth_utils import get_current_user, require_admin
+    
+    def mock_get_current_user():
+        return {"user_id": "test_officer", "role": "User"}
+        
+    def mock_require_admin():
+        return {"user_id": "admin", "role": "Admin"}
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+    app.dependency_overrides[require_admin] = mock_require_admin
     yield TestClient(app)
     del app.dependency_overrides[get_db]
+    del app.dependency_overrides[get_current_user]
+    del app.dependency_overrides[require_admin]
 
 # --- Tests ---
 
@@ -60,7 +74,7 @@ def test_login(client, db):
         role="User",
         is_active=True
     )
-    db.add(test_user)
+    db.merge(test_user)
     db.commit()
 
     # Test successful login (FR-011)
@@ -83,20 +97,21 @@ def test_login(client, db):
 
 # FR-061: Test Inward Number Generation
 def test_inward_no_generation(client, db):
+    test_folder = f"TestGen-{str(uuid.uuid4())[:4]}"
     # Ensure folder type exists
-    ft = models.FolderType(folder_id="Su-30", folder_name="Sukhoi Su-30")
-    db.add(ft)
+    ft = models.FolderType(folder_id=test_folder, folder_name="Test Folder Gen 1")
+    db.merge(ft)
     db.commit()
 
     # Get first inward number (should be 001)
-    response = client.get("/api/inward/next-no?folder_id=Su-30")
+    response = client.get(f"/api/inward/next-no?folder_id={test_folder}")
     assert response.status_code == 200
     assert response.json()["inward_no"] == "001"
 
     # Insert a fake log for 001
     inward1 = models.InwardRegister(
         inward_no="001",
-        folder_id="Su-30",
+        folder_id=test_folder,
         year=response.json()["year"],
         document_type="Query",
         status="Active"
@@ -105,27 +120,31 @@ def test_inward_no_generation(client, db):
     db.commit()
 
     # Next number should now increment to 002
-    response = client.get("/api/inward/next-no?folder_id=Su-30")
+    response = client.get(f"/api/inward/next-no?folder_id={test_folder}")
     assert response.status_code == 200
     assert response.json()["inward_no"] == "002"
 
-
-# FR-055: Test Outward Number Concurrency Reservation
 def test_outward_no_reservation(client, db):
-    ft = models.FolderType(folder_id="LCA", folder_name="Tejas LCA")
-    db.add(ft)
+    test_folder = f"TestGen-{str(uuid.uuid4())[:4]}"
+    ft = models.FolderType(folder_id=test_folder, folder_name="Test Folder Gen 2")
+    db.merge(ft)
     db.commit()
 
     # Get first reserved number (should be 001)
-    response = client.get("/api/outward/next-no?folder_id=LCA")
+    response = client.get(f"/api/outward/next-no?folder_id={test_folder}")
     assert response.status_code == 200
     assert response.json()["outward_no"] == "001"
+    
+    # 001 is now marked as reserved. Request again.
+    response = client.get(f"/api/outward/next-no?folder_id={test_folder}")
+    assert response.status_code == 200
+    assert response.json()["outward_no"] == "002"
 
     # Save a draft with Outward No 001
     draft = models.DraftFile(
-        file_path="Drafts/2026/LCA/fax-admin.doc",
+        file_path=f"Drafts/2026/{test_folder}/test-draft.doc",
         outward_no="001",
-        folder_id="LCA",
+        folder_id=test_folder,
         issuing_date=datetime.date(2026, 6, 21),
         template_type="Internal_Letter",
         is_locked=False,
@@ -142,13 +161,14 @@ def test_outward_no_reservation(client, db):
 
 # FR-052: Test Draft Editing Lock Checks
 def test_draft_locking(client, db):
+    test_folder = f"TestGen-{str(uuid.uuid4())[:4]}"
     # Setup test draft
-    db.add(models.FolderType(folder_id="LCA", folder_name="Tejas Light Combat Aircraft Design"))
+    db.merge(models.FolderType(folder_id=test_folder, folder_name="Test Folder"))
     db.commit()
     draft = models.DraftFile(
-        file_path="Drafts/2026/LCA/fax-admin.doc",
+        file_path=f"Drafts/2026/{test_folder}/fax-admin.doc",
         outward_no="001",
-        folder_id="LCA",
+        folder_id=test_folder,
         issuing_date=datetime.date(2026, 6, 21),
         template_type="Internal_Letter",
         is_locked=False,
@@ -175,7 +195,7 @@ def test_draft_locking(client, db):
 # FR-084: Test Soft Delete Request creation
 def test_soft_delete_flow(client, db):
     # Create inward log
-    db.add(models.FolderType(folder_id="Su-30", folder_name="Sukhoi Su-30 MKI Fighter Upgrade"))
+    db.merge(models.FolderType(folder_id="Su-30", folder_name="Sukhoi Su-30 MKI Fighter Upgrade"))
     db.commit()
     inward = models.InwardRegister(
         inward_no="005",
@@ -198,3 +218,98 @@ def test_soft_delete_flow(client, db):
     ).first()
     assert pending is not None
     assert pending.status == "Pending"
+
+# FR-164: Test TrashBin Flow
+def test_trash_bin_flow(client, db):
+    test_user_id = f"usr{str(uuid.uuid4())[:4]}"
+    test_user = models.User(
+        user_id=test_user_id, 
+        pb_no=str(uuid.uuid4())[:10],
+        name="Test User 1", 
+        dob=datetime.date(1990, 1, 1),
+        password_hash="testhash",
+        role="officer"
+    )
+    db.merge(test_user)
+    db.commit()
+
+    # 1. Create a fake pending deletion
+    test_folder = f"Tst{str(uuid.uuid4())[:3]}"
+    test_record = f"{test_folder}:2026:999"
+    pending = models.PendingDeletion(
+        source_table="inward_register",
+        record_id=test_record,
+        requested_by=test_user_id,
+        status="Pending"
+    )
+    db.add(pending)
+    db.commit()
+    
+    # Also create the actual inward record
+    ft2 = models.FolderType(folder_id=test_folder, folder_name="Test Folder")
+    db.merge(ft2)
+    db.commit()
+
+    inward = models.InwardRegister(
+        inward_no="999",
+        folder_id=test_folder,
+        year=2026,
+        document_type="Letter",
+        status="Active"
+    )
+    db.add(inward)
+    db.commit()
+
+    # 2. Admin approves deletion
+    response = client.put(f"/api/admin/pending-deletions/{pending.id}", json={"action": "Approve"})
+    assert response.status_code == 200
+
+    # 3. Check that it was moved to TrashBin
+    trash_items = db.query(models.TrashBin).all()
+    assert len(trash_items) == 1
+    trash_entry = trash_items[0]
+    assert trash_entry.source_table == "inward_register"
+    assert trash_entry.is_permanently_deleted == False
+
+    # 4. Restore from Trash
+    restore_resp = client.put(f"/api/admin/trash-bin/{trash_entry.id}/restore")
+    assert restore_resp.status_code == 200
+
+    # 5. Verify it's back in inward_register and gone from TrashBin
+    trash_items_after = db.query(models.TrashBin).all()
+    assert len(trash_items_after) == 0
+
+    restored = db.query(models.InwardRegister).filter(
+        models.InwardRegister.folder_id == "TestFolder",
+        models.InwardRegister.inward_no == "999"
+    ).first()
+    assert restored is not None
+
+# FR-058: Test Edit Log Creation
+def test_edit_log(client, db):
+    # Log an edit directly
+    from routers.inward import log_edit
+    
+    # Fake inward record
+    ft = models.FolderType(folder_id="Audit", folder_name="Audit Folder")
+    db.merge(ft)
+    db.commit()
+
+    inward = models.InwardRegister(
+        inward_no="888",
+        folder_id="Audit",
+        year=2026,
+        document_type="Audit",
+        status="Active"
+    )
+    db.add(inward)
+    db.commit()
+    
+    log_edit(db, "inward_register", "Audit:2026:888", "create", "admin", {"status": "Active"})
+    
+    # Check EditLog table
+    logs = db.query(models.EditLog).all()
+    assert len(logs) == 1
+    assert logs[0].action == "create"
+    assert logs[0].edited_by == "admin"
+    assert logs[0].record_id == "Audit:2026:888"

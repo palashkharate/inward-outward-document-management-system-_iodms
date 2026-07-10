@@ -87,8 +87,8 @@ CREATE TABLE inward_register (
     remarks TEXT,
     document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('Query', 'Snag', 'File')),
     status VARCHAR(50) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Not Active')),
-    attachment_path VARCHAR(500),
-    attachment_original_ext VARCHAR(50),
+    attachment_paths TEXT[], -- Array of strings for multiple file uploads
+    linked_documents TEXT[], -- Array of strings for linked record IDs
     PRIMARY KEY (folder_id, year, inward_no)
 );
 COMMENT ON TABLE inward_register IS 'All logged and stored inward documents';
@@ -110,6 +110,7 @@ CREATE TABLE outward_register (
     actioned_by VARCHAR(100) REFERENCES users(user_id) ON UPDATE CASCADE,
     document_path VARCHAR(500) NOT NULL,
     template_type VARCHAR(100) NOT NULL CHECK (template_type IN ('Fax_With_GM_Sig', 'Fax_Without_GM_Sig', 'Internal_Letter')),
+    linked_documents TEXT[], -- Array of strings for linked record IDs
     PRIMARY KEY (folder_id, year, outward_no)
 );
 COMMENT ON TABLE outward_register IS 'All finalised and dispatched outward documents';
@@ -158,6 +159,16 @@ CREATE TABLE pending_profile_edits (
     status VARCHAR(50) NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'Approved', 'Rejected'))
 );
 COMMENT ON TABLE pending_profile_edits IS 'Profile modifications submitted by users awaiting Admin approval';
+
+-- 12. Allowed IPs Table (FR-172)
+CREATE TABLE allowed_ips (
+    id SERIAL PRIMARY KEY,
+    ip_address VARCHAR(50) NOT NULL,
+    description VARCHAR(255),
+    added_by VARCHAR(100) REFERENCES users(user_id) ON UPDATE CASCADE,
+    added_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE allowed_ips IS 'Whitelist of IP addresses allowed to access the system';
 ```
 
 ---
