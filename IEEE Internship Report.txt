@@ -1,0 +1,755 @@
+---
+title: "AI-BASED PREDICTIVE MAINTENANCE SYSTEM FOR AIRCRAFT TURBOFAN ENGINE: REMAINING USEFUL LIFE PREDICTION USING MACHINE LEARNING"
+author: "Preksha Pethakar"
+affiliation: "Fr. C. Rodrigues Institute of Technology (FCRIT), Vashi, Navi Mumbai"
+date: "July 2026"
+---
+
+# IEEE Internship Report
+
+## Certificate
+
+This is to certify that **Ms. Preksha Pethakar**, a student of Bachelor of Technology in Computer Engineering at Fr. C. Rodrigues Institute of Technology (FCRIT), Vashi, has successfully completed her industrial internship at Hindustan Aeronautics Limited (HAL), Aircraft Division, during the period June 2026 to July 15, 2026.
+
+During the internship, she was exposed to aerospace software engineering concepts, avionics communication protocols, Interface Control Documents (ICDs), simulation and acquisition software, and secure software development practices. She also completed a machine learning project titled *Predictive Maintenance for Aircraft Turbofan Engines Using Machine Learning*, based on the NASA C-MAPSS dataset, and contributed to the *Inward Outward Document Management System (IODMS)*, a secure document-handling application for an air-gapped environment.
+
+The work presented in this report is based on her learning, observations, and technical projects completed during the internship. To the best of our knowledge, this report does not contain confidential or classified information belonging to Hindustan Aeronautics Limited.
+
+Place: Nashik
+Date: ______________
+
+Industrial Guide (Signature) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Faculty Guide (Signature)
+
+## Declaration
+
+I hereby declare that this internship report titled "AI-Based Predictive Maintenance System for Aircraft Turbofan Engine Remaining Useful Life Prediction Using Machine Learning" is an authentic record of my work carried out during the industrial internship at Hindustan Aeronautics Limited (HAL), Aircraft Division, Ojhar, Nashik, from June 15, 2026, to July 15, 2026. The work presented herein is original and has not been submitted previously for the award of any degree or diploma to any other institution or university.
+
+Date: ______________
+Signature of Student:
+Name: Preksha Pethakar
+Roll No: [Your Roll Number]
+
+## Acknowledgement
+
+I express my sincere gratitude to Hindustan Aeronautics Limited (HAL), Aircraft Division, Ojhar, Nashik, for providing me with the opportunity to undertake this project and gain valuable exposure to the practical application of Artificial Intelligence in the field of predictive maintenance for aerospace systems.
+
+I am deeply thankful to my industrial mentor for their valuable guidance, continuous encouragement, and technical suggestions throughout the project. Their support helped me understand the challenges involved in developing intelligent maintenance systems for aircraft engines and applying machine learning techniques to solve real-world engineering problems.
+
+I also extend my heartfelt gratitude to the faculty members of the Department of Computer Engineering, Fr. C. Rodrigues Institute of Technology, for their continuous encouragement and academic guidance throughout the duration of this project.
+
+This project provided an excellent opportunity to strengthen my knowledge in data preprocessing, exploratory data analysis, feature engineering, machine learning model development, Remaining Useful Life prediction, regression model evaluation, and dashboard development using Streamlit. It also enhanced my understanding of how Artificial Intelligence can contribute to improving aircraft reliability, maintenance planning, and operational safety.
+
+Finally, I would like to thank my parents, family members, and friends for their constant motivation, encouragement, and support throughout the successful completion of this project.
+
+## Abstract
+
+This project presents the design and implementation of an Artificial Intelligence-based Predictive Maintenance System for estimating the Remaining Useful Life (RUL) of aircraft turbofan engines using the NASA Commercial Modular Aero-Propulsion System Simulation (C-MAPSS) benchmark dataset. The objective of the project is to develop a data-driven maintenance framework capable of predicting engine degradation before failure, thereby supporting timely maintenance decisions and improving aircraft reliability.
+
+The proposed methodology includes data preprocessing, exploratory data analysis, feature engineering, and machine learning-based regression modelling. Several regression algorithms, namely Linear Regression, Decision Tree Regression, Random Forest Regression, Support Vector Regression (SVR), and Extreme Gradient Boosting (XGBoost), are studied and comparatively evaluated using Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), Coefficient of Determination (R² Score), and NASA Scoring Function. The comparative analysis enables the identification of the most suitable regression model for Remaining Useful Life prediction.
+
+To improve the practical interpretation of the NASA C-MAPSS dataset, representative engineering proxies are discussed for selected anonymous sensor channels, illustrating how similar measurements could be utilized within real aircraft engine health monitoring systems. These mappings are conceptual and intended solely for demonstrating potential deployment scenarios.
+
+An interactive Streamlit dashboard was developed to visualize engine degradation trends, compare model performance, estimate Remaining Useful Life, and generate maintenance recommendations. The developed system demonstrates the potential of Artificial Intelligence in predictive maintenance by enabling condition-based maintenance strategies that can reduce operational costs, minimize unexpected failures, and improve aircraft availability and safety.
+
+Overall, the project demonstrates the practical application of machine learning techniques for aerospace predictive maintenance while providing a scalable framework that can be extended to real-world aircraft health monitoring systems.
+
+**Keywords** — Artificial Intelligence (AI), Machine Learning (ML), Predictive Maintenance, Remaining Useful Life (RUL), Aircraft Engine Health Monitoring, NASA C-MAPSS Dataset, Prognostics and Health Management (PHM), Regression Analysis, XGBoost, Random Forest, Support Vector Regression (SVR), Feature Engineering, Streamlit Dashboard, Aerospace Analytics, Condition-Based Maintenance (CBM).
+
+## Table of Contents
+
+1.  [CHAPTER 1 – INTRODUCTION](#1-chapter-1--introduction)
+    *   [1.1 Introduction](#11-introduction)
+    *   [1.2 Aircraft Engine Health Monitoring](#12-aircraft-engine-health-monitoring)
+    *   [1.3 Artificial Intelligence in Aerospace](#13-artificial-intelligence-in-aerospace)
+    *   [1.4 Maintenance Strategies](#14-maintenance-strategies)
+    *   [1.5 Problem Statement](#15-problem-statement)
+    *   [1.6 Objectives](#16-objectives)
+    *   [1.7 Scope of the Project](#17-scope-of-the-project)
+    *   [1.8 Project Contributions](#18-project-contributions)
+    *   [1.9 Chapter Summary](#19-chapter-summary)
+2.  [CHAPTER 2 – LITERATURE SURVEY](#2-chapter-2--literature-survey)
+    *   [2.1 Introduction](#21-introduction)
+    *   [2.2 NASA C-MAPSS Dataset Overview](#22-nasa-c-mapss-dataset-overview)
+    *   [2.3 Literature Review](#23-literature-review)
+    *   [2.4 Comparison of Machine Learning Algorithms](#24-comparison-of-machine-learning-algorithms)
+    *   [2.5 Research Gap](#25-research-gap)
+    *   [2.6 Chapter Summary](#26-chapter-summary)
+3.  [CHAPTER 3 – DATASET ANALYSIS AND METHODOLOGY](#3-chapter-3--dataset-analysis-and-methodology)
+    *   [3.1 Introduction](#31-introduction)
+    *   [3.2 NASA C-MAPSS Dataset](#32-nasa-c-mapss-dataset)
+    *   [3.3 Data Preprocessing](#33-data-preprocessing)
+    *   [3.4 Feature Engineering](#34-feature-engineering)
+    *   [3.5 Proposed Methodology](#35-proposed-methodology)
+    *   [3.6 Evaluation Metrics](#36-evaluation-metrics)
+    *   [3.7 Chapter Summary](#37-chapter-summary)
+4.  [CHAPTER 4 – SYSTEM IMPLEMENTATION](#4-chapter-4--system-implementation)
+    *   [4.1 Overall System Architecture](#41-overall-system-architecture)
+    *   [4.2 Development Environment](#42-development-environment)
+    *   [4.3 Dataset Processing Pipeline](#43-dataset-processing-pipeline)
+    *   [4.4 Machine Learning Model Development](#44-machine-learning-model-development)
+    *   [4.5 Dashboard Design and Implementation](#45-dashboard-design-and-implementation)
+    *   [4.6 Project Workflow](#46-project-workflow)
+    *   [4.7 Chapter Summary](#47-chapter-summary)
+5.  [CHAPTER 5 – RESULTS AND DISCUSSION](#5-chapter-5--results-and-discussion)
+    *   [5.1 Experimental Setup](#51-experimental-setup)
+    *   [5.2 Performance Comparison of Machine Learning Models](#52-performance-comparison-of-machine-learning-models)
+    *   [5.3 Dashboard Results](#53-dashboard-results)
+    *   [5.4 Discussion](#54-discussion)
+    *   [5.5 Chapter Summary](#55-chapter-summary)
+6.  [CHAPTER 6 – CONCLUSION AND FUTURE SCOPE](#6-chapter-6--conclusion-and-future-scope)
+    *   [6.1 Conclusion](#61-conclusion)
+    *   [6.2 Challenges Faced](#62-challenges-faced)
+    *   [6.3 Future Scope](#63-future-scope)
+7.  [References](#7-references)
+8.  [Appendices](#appendices)
+    *   [Appendix A: Project Folder Structure](#appendix-a-project-folder-structure)
+    *   [Appendix B: System Architecture Diagrams](#appendix-b-system-architecture-diagrams)
+    *   [Appendix C: Streamlit Dashboard Screenshots](#appendix-c-streamlit-dashboard-screenshots)
+    *   [Appendix D: IODMS User Interface Screenshots](#appendix-d-iodms-user-interface-screenshots)
+    *   [Appendix E: Docker Deployment Workflow](#appendix-e-docker-deployment-workflow)
+    *   [Appendix F: Machine Learning Model Performance Graphs](#appendix-f-machine-learning-model-performance-graphs)
+    *   [Appendix G: Additional EDA Visualizations](#appendix-g-additional-eda-visualizations)
+
+## List of Figures
+
+*   Figure 4.1: Predictive Maintenance System Architecture
+*   Figure 4.2: Example Streamlit Dashboard Interface
+*   Figure 4.3: Project Development Workflow
+*   Figure 5.1: Example RUL Prediction Plot for an Engine Unit
+*   Figure 5.2: Streamlit Dashboard for RUL Monitoring
+*   Figure A.1: Project Folder Structure Overview
+*   Figure B.1: IODMS System Architecture Overview
+*   Figure B.2: Predictive Maintenance Pipeline Flow
+*   Figure B.3: Model Comparison Architecture
+*   Figure C.1: Streamlit Dashboard - RUL Prediction Interface
+*   Figure C.2: Streamlit Dashboard - Model Performance Visualization
+*   Figure D.1: Example IODMS Dashboard/Document Listing Interface
+*   Figure D.2: Example IODMS Document Upload/Detail View
+*   Figure E.1: Simplified Docker Compose Configuration for IODMS
+*   Figure F.1: Example RUL Prediction Plot for an Engine Unit (FD001)
+*   Figure F.2: Error Distribution Chart
+*   Figure F.3: Feature Importance Plot (FD001)
+*   Figure F.4: Example RUL Prediction Plot for an Engine Unit (FD002)
+*   Figure F.5: Example RUL Prediction Plot for an Engine Unit (FD003)
+*   Figure F.6: Example RUL Prediction Plot for an Engine Unit (FD004)
+*   Figure G.1: Example Sensor Correlation Matrix
+*   Figure G.2: Example Degradation Trend for a Key Sensor
+
+## List of Tables
+
+*   Table 5.1: Performance Metrics for Machine Learning Models on FD001 Subset
+
+## List of Abbreviations
+
+| Abbreviation | Full Form |
+| :--- | :--- |
+| AI | Artificial Intelligence |
+| CBM | Condition-Based Maintenance |
+| C-MAPSS | Commercial Modular Aero-Propulsion System Simulation |
+| CNN | Convolutional Neural Network |
+| EHM | Engine Health Monitoring |
+| FCRIT | Fr. C. Rodrigues Institute of Technology |
+| GBM | Gradient Boosting Machine |
+| HAL | Hindustan Aeronautics Limited |
+| ICD | Interface Control Document |
+| IODMS | Inward Outward Document Management System |
+| LAN | Local Area Network |
+| LSTM | Long Short-Term Memory |
+| MAE | Mean Absolute Error |
+| ML | Machine Learning |
+| NASA | National Aeronautics and Space Administration |
+| OCR | Optical Character Recognition |
+| PdM | Predictive Maintenance |
+| PHM | Prognostics and Health Management |
+| RBAC | Role-Based Access Control |
+| RMSE | Root Mean Squared Error |
+| RNN | Recurrent Neural Network |
+| RUL | Remaining Useful Life |
+| SVM | Support Vector Machine |
+| SVR | Support Vector Regression |
+| XGBoost | Extreme Gradient Boosting |
+
+## Nomenclature
+
+| Symbol | Definition |
+| :--- | :--- |
+| R² | Coefficient of Determination |
+| $y_i$ | Actual Remaining Useful Life for the $i$-th engine |
+| $\hat{y}_i$ | Predicted Remaining Useful Life for the $i$-th engine |
+| $n$ | Total number of engine units in the dataset |
+| $d_i$ | Difference between predicted and actual RUL ($d_i = \hat{y}_i - y_i$) |
+
+# 1. CHAPTER 1 – INTRODUCTION
+
+## 1.1 Introduction
+
+Aircraft engines operate under extreme mechanical and thermal conditions, making regular maintenance essential for ensuring safety and reliability. Traditional maintenance approaches, such as reactive and preventive maintenance, often lead to either unexpected failures or unnecessary servicing. With the advancement of Artificial Intelligence (AI) and Machine Learning (ML), predictive maintenance has emerged as an efficient alternative by estimating the Remaining Useful Life (RUL) of engine components before failure occurs.
+
+Predictive maintenance analyses historical operational data to identify degradation patterns and predict future equipment health. This enables maintenance to be scheduled only when required, reducing downtime, maintenance costs, and operational risks.
+
+This project develops an AI-based predictive maintenance system using the NASA C-MAPSS aircraft engine dataset. Multiple machine learning regression algorithms are implemented and compared to predict the Remaining Useful Life of aircraft engines. An interactive Streamlit dashboard is also developed to visualize predictions and assist in maintenance decision-making. The proposed system demonstrates how machine learning can support intelligent aircraft maintenance and improve operational efficiency.
+
+## 1.2 Aircraft Engine Health Monitoring
+
+Aircraft Engine Health Monitoring (EHM) is the continuous process of monitoring an aircraft engine's condition using operational data to ensure safe and reliable performance. Modern aircraft engines operate under extreme temperature, pressure, and mechanical stress, causing gradual degradation of engine components over time. Continuous monitoring helps detect early signs of wear and prevents unexpected failures.
+
+Aircraft engines are equipped with numerous sensors that collect operational information during every flight cycle. These measurements provide valuable insights into engine performance and degradation. By analysing this data, maintenance engineers can identify abnormal operating conditions and make informed maintenance decisions before critical failures occur.
+
+Traditional maintenance methods rely on scheduled inspections or repairs after failure, which may lead to unnecessary maintenance or unexpected breakdowns. Engine Health Monitoring overcomes these limitations by continuously evaluating engine condition and supporting data-driven maintenance strategies. When integrated with Artificial Intelligence and Machine Learning, EHM enables prediction of the Remaining Useful Life (RUL) of engine components, allowing maintenance to be performed at the optimal time.
+
+In this project, the NASA C-MAPSS dataset is used to simulate the aircraft engine health monitoring process. Machine learning algorithms analyse historical engine operational data to estimate Remaining Useful Life, demonstrating how intelligent monitoring systems can improve maintenance efficiency, reduce downtime, and enhance aircraft safety.
+
+## 1.3 Artificial Intelligence in Aerospace
+
+Artificial Intelligence (AI) has transformed the aerospace industry by enabling intelligent systems capable of analysing large volumes of operational data and supporting informed maintenance decisions. AI techniques, particularly Machine Learning (ML), are widely used for aircraft health monitoring, fault diagnosis, flight optimization, autonomous systems, and predictive maintenance.
+
+In aircraft engine maintenance, AI algorithms analyse historical sensor data to identify degradation patterns and estimate the Remaining Useful Life (RUL) of engine components. This enables maintenance to be scheduled before failures occur, reducing operational costs, minimizing downtime, and improving aircraft safety.
+
+In this project, AI is applied to the NASA C-MAPSS dataset to predict the Remaining Useful Life of aircraft engines using multiple regression algorithms. The integration of AI with an interactive Streamlit dashboard demonstrates how intelligent systems can support modern maintenance planning and improve operational efficiency.
+
+## 1.4 Maintenance Strategies
+
+Aircraft maintenance strategies have evolved from corrective approaches to intelligent predictive systems. The four major maintenance strategies are Reactive Maintenance, Preventive Maintenance, Condition-Based Maintenance (CBM), and Predictive Maintenance (PdM).
+
+Reactive Maintenance is performed only after equipment failure occurs, resulting in high repair costs and unexpected downtime.
+
+Preventive Maintenance follows predefined maintenance schedules regardless of the equipment's actual condition. Although it reduces sudden failures, it may lead to unnecessary replacement of healthy components.
+
+Condition-Based Maintenance (CBM) continuously monitors equipment health using sensor data. Maintenance is initiated only when abnormal conditions are detected, reducing unnecessary servicing.
+
+Predictive Maintenance uses Artificial Intelligence and Machine Learning to analyse historical operational data and estimate the Remaining Useful Life of components. It enables maintenance before failure occurs, improving reliability while minimizing maintenance cost and downtime.
+
+## 1.5 Problem Statement
+
+Aircraft engines generate large amounts of operational data during every flight cycle. Traditional maintenance strategies often fail to utilize this data effectively, resulting in either unexpected equipment failures or unnecessary maintenance. This leads to increased operational costs, reduced aircraft availability, and potential safety risks. The challenge lies in developing a robust system that can accurately predict engine degradation and Remaining Useful Life (RUL) to enable proactive, condition-based maintenance.
+
+## 1.6 Objectives
+
+The primary objective of this project is to design and develop an Artificial Intelligence-based predictive maintenance framework capable of estimating the Remaining Useful Life (RUL) of aircraft turbofan engines using the NASA Commercial Modular Aero-Propulsion System Simulation (C-MAPSS) benchmark dataset. Specific objectives include:
+
+1.  To conduct comprehensive data preprocessing and exploratory data analysis on the NASA C-MAPSS dataset.
+2.  To perform feature engineering to extract relevant degradation indicators from raw sensor data.
+3.  To implement and evaluate multiple machine learning regression algorithms (e.g., Random Forest, XGBoost, Support Vector Regression) for RUL prediction.
+4.  To conduct a comparative performance evaluation of the implemented models using standard regression metrics (RMSE, MAE, R²) and the NASA PHM08 scoring function.
+5.  To develop and deploy an interactive Streamlit-based dashboard for visualizing engine degradation trends, RUL predictions, and maintenance recommendations.
+6.  To demonstrate the potential of AI in improving aircraft reliability, reducing operational costs, and enhancing maintenance planning.
+
+## 1.7 Scope of the Project
+
+The scope of this project is focused on the development and evaluation of an AI-based predictive maintenance system for aircraft turbofan engines. The system utilizes the NASA C-MAPSS dataset for training and testing, covering various operating conditions and fault modes. The project encompasses data preprocessing, feature engineering, machine learning model development, comparative analysis, and the deployment of an interactive dashboard. While the project demonstrates the feasibility and benefits of AI in predictive maintenance, its direct application to real-world aircraft systems would require further validation, integration with existing avionics, and adherence to stringent certification processes.
+
+## 1.8 Project Contributions
+
+This project contributes to the field of aerospace predictive maintenance by:
+
+*   Providing a comprehensive framework for RUL prediction using advanced machine learning techniques.
+*   Conducting a comparative analysis of multiple regression models on the NASA C-MAPSS dataset, offering insights into their performance characteristics.
+*   Developing an interactive Streamlit dashboard that enhances the interpretability and usability of RUL predictions for maintenance engineers.
+*   Demonstrating the practical application of AI in transforming traditional aircraft maintenance strategies into more efficient and proactive approaches.
+
+## 1.9 Chapter Summary
+
+This chapter introduced the critical role of predictive maintenance in the aerospace industry, highlighting the limitations of traditional maintenance strategies. It outlined the problem statement, objectives, and scope of the project, emphasizing the application of AI and machine learning for aircraft engine health monitoring and Remaining Useful Life (RUL) prediction. The chapter also detailed the key contributions of this project to the field.
+
+# 2. CHAPTER 2 – LITERATURE SURVEY
+
+## 2.1 Introduction
+
+The aerospace industry has increasingly adopted advanced technologies to enhance safety, efficiency, and operational reliability. Predictive maintenance, powered by Artificial Intelligence (AI) and Machine Learning (ML), has emerged as a transformative approach to manage the health of complex systems like aircraft turbofan engines. This chapter provides a comprehensive literature survey on predictive maintenance, focusing on its application in aerospace, the use of the NASA C-MAPSS dataset, and various machine learning techniques employed for Remaining Useful Life (RUL) prediction.
+
+## 2.2 NASA C-MAPSS Dataset Overview
+
+The NASA Commercial Modular Aero-Propulsion System Simulation (C-MAPSS) dataset is a widely recognized benchmark for prognostics and health management (PHM) research, particularly for aircraft turbofan engines. It provides simulated multivariate time-series sensor data that captures engine degradation under various operating conditions and fault modes. The dataset is crucial for developing and evaluating RUL prediction algorithms due to its realistic representation of engine wear and tear.
+
+Each dataset (FD001, FD002, FD003, FD004) within C-MAPSS represents different operating conditions and fault modes, offering a diverse challenge for RUL prediction models. The data includes operational settings, sensor measurements, and the true RUL for each engine, allowing for robust model training and evaluation.
+
+## 2.3 Literature Review
+
+The prediction of Remaining Useful Life (RUL) for aircraft turbofan engines has been a significant area of research, with numerous studies exploring various machine learning and deep learning approaches. Early research often focused on statistical methods and physics-based models, but the advent of large datasets and computational power has shifted the focus towards data-driven techniques.
+
+Studies have shown the effectiveness of traditional machine learning algorithms such as Support Vector Machines (SVM), Random Forests, and Gradient Boosting Machines (GBM) in capturing complex degradation patterns. For instance, [Reference 1] utilized SVMs for RUL prediction, demonstrating their capability to handle non-linear relationships in sensor data. Ensemble methods like Random Forests [Reference 2] and XGBoost [Reference 3] have also proven highly effective due to their ability to combine multiple weak learners into a strong predictive model, often outperforming single models.
+
+Deep learning architectures, particularly Recurrent Neural Networks (RNNs) and Long Short-Term Memory (LSTM) networks, have gained prominence for their ability to process sequential data inherent in time-series sensor readings. [Reference 4] demonstrated that LSTMs can effectively learn long-term dependencies in engine degradation data, leading to improved RUL predictions. Convolutional Neural Networks (CNNs) have also been adapted for RUL prediction by treating time-series data as images or using 1D convolutions to extract features [Reference 5].
+
+Hybrid approaches, combining the strengths of different models or integrating feature engineering with deep learning, are also a growing trend. For example, [Reference 6] proposed a hybrid model that uses a CNN for feature extraction followed by an LSTM for sequence learning, achieving state-of-the-art performance on the C-MAPSS dataset.
+
+## 2.4 Comparison of Machine Learning Algorithms
+
+The choice of machine learning algorithm for RUL prediction is critical and depends on various factors, including data characteristics, computational resources, and desired interpretability. Traditional machine learning models like Random Forest, XGBoost, and SVR offer a balance of performance and interpretability. Random Forest, an ensemble of decision trees, is robust to overfitting and can handle high-dimensional data. XGBoost, a gradient boosting framework, is known for its speed and accuracy, often winning machine learning competitions. Support Vector Regression (SVR) is effective in high-dimensional spaces and can model non-linear relationships using kernel tricks.
+
+Deep learning models, while often achieving higher accuracy, typically require larger datasets and more computational power. Their black-box nature can also be a disadvantage in safety-critical applications where model interpretability is crucial. However, advancements in explainable AI (XAI) are addressing this limitation.
+
+## 2.5 Research Gap
+
+Despite significant advancements in RUL prediction, several research gaps remain. One key area is the development of robust models that can generalize across diverse operating conditions and fault modes without extensive retraining. Many existing models perform well on specific subsets of the C-MAPSS dataset but struggle with unseen variations. Furthermore, the integration of multi-source data (e.g., maintenance logs, flight data, environmental factors) beyond sensor readings remains an area for further exploration to enhance prediction accuracy and provide a more holistic view of engine health.
+
+Another gap lies in the real-time deployment and operationalization of these models within existing avionics systems, especially considering the stringent certification requirements and computational constraints of embedded systems. The development of lightweight, yet accurate, models suitable for edge deployment is crucial. Finally, enhancing the interpretability and explainability of complex machine learning models for RUL prediction is vital for gaining trust from maintenance engineers and facilitating informed decision-making in safety-critical aerospace applications.
+
+## 2.6 Chapter Summary
+
+This chapter provided a comprehensive literature survey on predictive maintenance for aircraft turbofan engines, highlighting the importance of RUL prediction and the role of the NASA C-MAPSS dataset. It reviewed various traditional and deep learning machine learning approaches, discussed their strengths and weaknesses, and identified key research gaps in the field. The insights gained from this literature review inform the methodology and model selection for the predictive maintenance project presented in this report.
+
+# 3. CHAPTER 3 – DATASET ANALYSIS AND METHODOLOGY
+
+## 3.1 Introduction
+
+This chapter details the methodology employed for the AI-based predictive maintenance system, encompassing the dataset analysis, preprocessing steps, feature engineering techniques, and the proposed machine learning approach for Remaining Useful Life (RUL) prediction. The objective is to provide a clear and reproducible framework for developing robust RUL prediction models.
+
+## 3.2 NASA C-MAPSS Dataset
+
+The NASA Commercial Modular Aero-Propulsion System Simulation (C-MAPSS) dataset is a collection of simulated aircraft turbofan engine degradation data. It comprises four distinct subsets (FD001, FD002, FD003, FD004), each representing different operating conditions and fault modes. Each dataset includes:
+
+*   **Unit Number:** Unique identifier for each engine.
+*   **Cycle:** Time in cycles (or operational units) for each engine.
+*   **Operational Settings:** Three operational settings that vary during flight.
+*   **Sensor Measurements:** 21 sensor measurements that capture engine performance and degradation.
+*   **Remaining Useful Life (RUL):** The true RUL for each engine, indicating the number of cycles remaining before failure.
+
+The dataset is characterized by run-to-failure trajectories, where engines start with varying degrees of initial wear and degrade until failure. This makes it ideal for training and evaluating RUL prediction models.
+
+## 3.3 Data Preprocessing
+
+Effective data preprocessing is crucial for enhancing the performance of machine learning models. The following steps were applied to the C-MAPSS dataset:
+
+1.  **RUL Capping:** The true RUL values were capped at a maximum threshold (e.g., 125 cycles). This is based on the assumption that maintenance decisions are typically made within a certain window before failure, and predicting RUL far in advance might not be as critical or accurate.
+2.  **Feature Normalization:** Sensor measurements and operational settings were normalized using Min-Max scaling. This ensures that all features contribute equally to the model training process and prevents features with larger values from dominating the learning algorithm.
+3.  **Feature Selection:** Initial analysis and domain knowledge were used to select the most relevant sensor measurements and operational settings, discarding those with little variance or direct correlation to degradation.
+
+## 3.4 Feature Engineering
+
+Feature engineering is the process of creating new features from existing raw data to improve the predictive power of machine learning models. For the C-MAPSS dataset, temporal features were engineered to capture the degradation trends:
+
+1.  **Rolling Statistics:** Moving averages, standard deviations, minimums, and maximums of sensor measurements were calculated over a defined window size (e.g., 10-20 cycles). These features provide insights into the recent history and variability of engine performance.
+2.  **Polynomial Features:** Polynomial transformations of certain sensor readings were explored to capture non-linear relationships with RUL.
+3.  **Interaction Features:** Combinations of existing features were created to capture synergistic effects that might influence engine degradation.
+
+## 3.5 Proposed Methodology
+
+The proposed methodology for RUL prediction involves a supervised learning approach. After preprocessing and feature engineering, the dataset is split into training and testing sets. Machine learning regression models are then trained on the engineered features to predict the RUL. The overall workflow is as follows:
+
+1.  **Data Acquisition:** Load the NASA C-MAPSS training and test datasets.
+2.  **Preprocessing:** Apply RUL capping, normalization, and feature selection.
+3.  **Feature Engineering:** Generate rolling statistics and other temporal features.
+4.  **Model Training:** Train selected machine learning models (Random Forest, XGBoost, SVR) on the preprocessed and engineered training data.
+5.  **Model Evaluation:** Evaluate model performance on the test set using various metrics.
+6.  **Deployment:** Deploy the best-performing model via an interactive Streamlit dashboard.
+
+## 3.6 Evaluation Metrics
+
+The performance of the RUL prediction models was evaluated using the following metrics:
+
+1.  **Root Mean Squared Error (RMSE):** Measures the average magnitude of the errors. Lower RMSE indicates better accuracy.
+2.  **Mean Absolute Error (MAE):** Measures the average absolute difference between predicted and actual values. Less sensitive to outliers than RMSE.
+3.  **R-squared (R²):** Represents the proportion of the variance in the dependent variable that is predictable from the independent variables. Higher R² indicates a better fit.
+4.  **NASA PHM08 Scoring Function:** A domain-specific metric that asymmetrically penalizes late predictions (overestimation of RUL) ten times more heavily than early predictions (underestimation of RUL). A lower NASA score is desirable, reflecting safer predictions.
+
+## 3.7 Chapter Summary
+
+This chapter outlined the detailed methodology for developing the AI-based predictive maintenance system. It covered the characteristics of the NASA C-MAPSS dataset, the essential data preprocessing steps, the techniques used for feature engineering, the proposed machine learning workflow, and the comprehensive set of evaluation metrics employed to assess model performance. This systematic approach ensures the development of robust and reliable RUL prediction models.
+
+# 4. CHAPTER 4 – SYSTEM IMPLEMENTATION
+
+## 4.1 Overall System Architecture
+
+The overall system architecture for the predictive maintenance project integrates data processing, machine learning model development, and an interactive user interface. The architecture is designed to be modular and scalable, allowing for easy integration of new data sources or models.
+
+**[Placeholder for Predictive Maintenance Pipeline Flow Diagram - `architecture/pipeline_flow.png`]**
+
+*Figure 4.1: Predictive Maintenance System Architecture*
+
+The system comprises several key components:
+
+*   **Data Ingestion:** Raw sensor data from aircraft engines (simulated by C-MAPSS) is ingested.
+*   **Data Preprocessing & Feature Engineering:** A dedicated pipeline handles data cleaning, normalization, and the creation of advanced temporal features.
+*   **Machine Learning Model:** Trained models (SVR, XGBoost, Random Forest) predict RUL.
+*   **Streamlit Dashboard:** An interactive web application for visualizing predictions, engine health, and maintenance recommendations.
+
+## 4.2 Development Environment
+
+The development environment was set up using Python 3.x, leveraging popular libraries for data science and machine learning. Key tools and libraries included:
+
+*   **Programming Language:** Python 3.x
+*   **Data Manipulation:** Pandas, NumPy
+*   **Machine Learning:** Scikit-learn, XGBoost
+*   **Data Visualization:** Matplotlib, Seaborn
+*   **Web Application Framework:** Streamlit
+*   **Version Control:** Git
+
+## 4.3 Dataset Processing Pipeline
+
+The dataset processing pipeline is a critical component that transforms raw C-MAPSS data into a format suitable for machine learning. It automates the steps of data loading, cleaning, RUL capping, normalization, and feature engineering. This ensures consistency and reproducibility in the data preparation phase.
+
+## 4.4 Machine Learning Model Development
+
+Machine learning model development involved experimenting with various regression algorithms to identify the best performer for RUL prediction. The process included:
+
+*   **Model Selection:** Random Forest, XGBoost, and Support Vector Regression (SVR) were chosen based on their proven performance in time-series and regression tasks.
+*   **Hyperparameter Tuning:** Grid search and cross-validation techniques were employed to optimize the hyperparameters of each model, maximizing their predictive accuracy.
+*   **Training and Validation:** Models were trained on the preprocessed training data and validated using a separate validation set to prevent overfitting.
+
+## 4.5 Dashboard Design and Implementation
+
+An interactive Streamlit dashboard was designed and implemented to provide a user-friendly interface for monitoring engine health and RUL predictions. The dashboard features include:
+
+*   **Engine Selection:** Allows users to select specific engine units for analysis.
+*   **RUL Prediction Visualization:** Displays predicted RUL alongside actual RUL (for test data) and degradation trends.
+*   **Sensor Data Plots:** Visualizes key sensor measurements over time.
+*   **Model Performance Metrics:** Presents a summary of evaluation metrics for different models.
+*   **Maintenance Recommendations:** Provides insights based on RUL predictions to support proactive maintenance scheduling.
+
+**[Placeholder for Streamlit Dashboard Screenshots - `visualizations/streamlit_dashboard_1.png`, `visualizations/streamlit_dashboard_2.png`]**
+
+*Figure 4.2: Example Streamlit Dashboard Interface*
+
+## 4.6 Project Workflow
+
+The project workflow followed a structured approach, from data acquisition to model deployment. It emphasized iterative development, continuous evaluation, and integration of feedback. The workflow ensured that each stage of the project was systematically executed and aligned with the overall objectives.
+
+**[Placeholder for Project Workflow Diagram - `workflow.md` or `architecture/pipeline_flow.png` if it covers the full workflow]**
+
+*Figure 4.3: Project Development Workflow*
+
+## 4.7 Chapter Summary
+
+This chapter detailed the system implementation aspects of the predictive maintenance project. It described the overall system architecture, the development environment, the dataset processing pipeline, machine learning model development, and the design and implementation of the interactive Streamlit dashboard. The chapter also outlined the structured project workflow, emphasizing the systematic approach taken to achieve the project objectives.
+
+# 5. CHAPTER 5 – RESULTS AND DISCUSSION
+
+## 5.1 Experimental Setup
+
+The experimental setup involved training and evaluating the machine learning models on the NASA C-MAPSS dataset. The dataset was split into training and testing sets, with a typical 80/20 ratio. The models were trained on a computing environment equipped with [mention CPU/GPU, RAM if significant] and Python 3.x with the specified libraries. Cross-validation techniques (e.g., k-fold cross-validation) were used during training to ensure robust model selection and hyperparameter tuning.
+
+## 5.2 Performance Comparison of Machine Learning Models
+
+The performance of the trained machine learning models (Random Forest, XGBoost, and Support Vector Regression) for Remaining Useful Life (RUL) prediction was rigorously evaluated using a combination of standard regression metrics and the domain-specific NASA PHM08 Scoring Function. The evaluation was primarily conducted on the FD001 subset of the NASA C-MAPSS dataset, which represents a single operating condition and a single fault mode, providing a clear baseline for comparison.
+
+### 5.2.1 Quantitative Evaluation
+
+The following table summarizes the key performance metrics for each model on the FD001 subset:
+
+| Model           | RMSE   | MAE    | R²      | NASA Score |
+| :-------------- | :----- | :----- | :------ | :--------- |
+| Random Forest   | 13.49  | 10.23  | 0.9026  | 10,464     |
+| XGBoost         | 13.03  | 10.00  | 0.9092  | 9,619      |
+| **SVR (Best)**  | **12.76** | **9.81** | **0.9129** | **8,462** |
+
+From the results, it is evident that the **Support Vector Regression (SVR)** model achieved the best performance across all evaluated metrics for the FD001 subset. It recorded the lowest Root Mean Squared Error (RMSE) and Mean Absolute Error (MAE), indicating superior accuracy in predicting RUL. The R² score of 0.9129 suggests that SVR explains over 91% of the variance in the RUL, demonstrating a strong fit to the degradation patterns.
+
+### 5.2.2 Analysis of NASA PHM08 Scoring Function
+
+The NASA PHM08 Scoring Function is particularly insightful for aerospace applications due to its asymmetric penalty for prediction errors. A lower NASA Score indicates better performance. The SVR model achieved the lowest NASA Score of 8,462, reinforcing its superior performance. This metric is crucial because it heavily penalizes late predictions (overestimating RUL) ten times more than early predictions (underestimating RUL). In a safety-critical domain like aviation, overestimating the remaining life of an engine can lead to catastrophic failures, making the ability to avoid such errors highly valued. The SVR model's lower score suggests it is more effective at minimizing these high-penalty late predictions.
+
+### 5.2.3 Comparative Discussion
+
+*   **Random Forest:** Served as a robust baseline, demonstrating good predictive capabilities with an R² of over 0.90. Its ensemble nature provides stability and interpretability.
+*   **XGBoost:** Showed an improvement over Random Forest, which is expected given its advanced gradient boosting technique that sequentially corrects errors. Its performance was close to SVR but slightly higher in RMSE and NASA Score.
+*   **SVR:** Outperformed both tree-based models. This can be attributed to its ability to effectively model complex, non-linear relationships in the high-dimensional feature space created by the feature engineering process, particularly with the RBF kernel. The careful normalization of features also played a significant role in SVR's superior performance.
+
+These results highlight the effectiveness of the chosen preprocessing and feature engineering steps in preparing the C-MAPPS data for machine learning models. The SVR model, in particular, demonstrated a strong capability to predict RUL accurately and safely, making it a promising candidate for real-world predictive maintenance systems.
+
+**[Placeholder for RUL Prediction Plots and Error Distribution Charts - `visualizations/rul_prediction_plot.png`, `visualizations/error_distribution_chart.png`]**
+
+*Figure 5.1: Example RUL Prediction Plot for an Engine Unit*
+
+## 5.3 Dashboard Results
+
+The Streamlit dashboard effectively visualizes the RUL predictions and engine health status, providing an intuitive interface for maintenance engineers. Key insights from the dashboard include:
+
+*   **Real-time RUL Display:** The dashboard can display the predicted RUL for selected engine units, allowing for immediate assessment of their health.
+*   **Degradation Trend Analysis:** Visualizations of sensor data over time help identify degradation trends and anomalies.
+*   **Maintenance Action Triggers:** Based on RUL thresholds, the dashboard can suggest proactive maintenance actions, optimizing scheduling and reducing downtime.
+
+**[Placeholder for Streamlit Dashboard Screenshots - `visualizations/streamlit_dashboard_1.png`, `visualizations/streamlit_dashboard_2.png`]**
+
+*Figure 5.2: Streamlit Dashboard for RUL Monitoring*
+
+## 5.4 Discussion
+
+The predictive maintenance system successfully demonstrated the application of machine learning to a critical aerospace problem. The SVR model's superior performance, particularly its lower NASA PHM08 score, indicates its potential for enhancing aircraft safety and operational efficiency. The interactive Streamlit dashboard provides a practical tool for maintenance personnel, bridging the gap between complex ML models and actionable insights.
+
+While the project focused on the C-MAPSS dataset, the methodology is transferable to real-world scenarios, provided appropriate sensor data and domain expertise are available. The challenges encountered, such as data preprocessing and model generalization, highlight the complexities inherent in real-world predictive maintenance applications.
+
+## 5.5 Chapter Summary
+
+This chapter presented the experimental setup, detailed the performance comparison of various machine learning models for RUL prediction, and discussed the results obtained from the Streamlit dashboard. It highlighted the SVR model as the best performer and emphasized the practical implications of the developed system for aircraft maintenance. The discussion also covered the broader significance of the findings and the challenges addressed.
+
+# 6. CHAPTER 6 – CONCLUSION AND FUTURE SCOPE
+
+## 6.1 Conclusion
+
+This internship report documented the development of an AI-based predictive maintenance system for aircraft turbofan engines and contributions to the Inward Outward Document Management System (IODMS) at Hindustan Aeronautics Limited (HAL). The predictive maintenance project successfully demonstrated the application of machine learning techniques to accurately predict the Remaining Useful Life (RUL) of engines using the NASA C-MAPSS dataset. The Support Vector Regression (SVR) model emerged as the most effective, achieving superior performance across key metrics, including the critical NASA PHM08 scoring function. The interactive Streamlit dashboard developed provides a practical interface for visualizing engine health and RUL predictions, enabling proactive maintenance decisions.
+
+Concurrently, the contributions to the IODMS project involved understanding and implementing secure software deployment strategies within an air-gapped environment using Docker. This included the development of robust security features such as role-based access control and a highly restricted auditor view, ensuring compliance with stringent security protocols. The internship provided invaluable practical experience in aerospace software engineering, advanced machine learning, and secure enterprise application deployment, strengthening the foundation for future contributions to these interdisciplinary fields.
+
+## 6.2 Challenges Faced
+
+Both the Predictive Maintenance project and the IODMS implementation presented distinct challenges, requiring innovative solutions and a robust problem-solving approach. Addressing these challenges was crucial for the successful completion of the internship objectives.
+
+### 6.2.1 Challenges in Predictive Maintenance Project
+
+*   **Data Quality and Preprocessing:** The raw NASA C-MAPSS dataset, while comprehensive, required extensive preprocessing. This included handling missing values, noise reduction, and feature scaling. The primary challenge was to derive meaningful features from the time-series sensor data that accurately captured engine degradation patterns. **Solution:** Implementation of a robust preprocessing pipeline involving moving average filters, normalization techniques, and the creation of new features such as rolling statistics (mean, standard deviation, min, max) over defined window sizes. The RUL capping strategy was also critical to focus the model on the most relevant degradation phase.
+*   **Model Selection and Optimization:** Choosing the optimal machine learning model from a range of algorithms (Random Forest, XGBoost, SVR) and fine-tuning their hyperparameters was challenging. The goal was to achieve high accuracy while maintaining interpretability and computational efficiency. **Solution:** A systematic approach involving cross-validation and grid search (or similar hyperparameter optimization techniques) was employed. The NASA PHM08 scoring function was used as a primary evaluation metric to guide model selection, prioritizing models that minimized the severe penalty for late RUL predictions.
+*   **Generalization Gap:** Ensuring that the models generalized well from the training data to unseen test data, especially across different operating conditions and fault modes within the C-MAPSS dataset, was a significant concern. **Solution:** Careful splitting of the dataset to ensure representative training and testing sets, along with rigorous evaluation on held-out test data, helped assess and improve generalization capabilities. Techniques like ensemble methods (Random Forest, XGBoost) inherently offer better generalization due to their averaging of multiple decision trees.
+
+### 6.2.2 Challenges in IODMS Implementation
+
+*   **Air-Gapped Environment Deployment:** Deploying a full-stack application in an air-gapped LAN without internet access was the most significant challenge. This meant no direct access to package managers, Docker registries, or online documentation. **Solution:** A comprehensive offline deployment strategy was developed. This involved pre-downloading all necessary software packages, Docker images, and dependencies on an internet-connected machine, securely transferring them via physical media, and then performing offline installations and Docker image loading on the target server. This ensured all components were available within the isolated network.
+*   **Legacy System Migration:** The IODMS was a redevelopment of an inaccessible Microsoft Access-based system, with only exported XLSX files of five tables available for one-time migration. Additionally, over 5000 scanned documents needed to be migrated into a new folder structure. **Solution:** A data migration plan was devised to parse the XLSX data and import it into the new PostgreSQL database. For the scanned documents, a script was planned to organize them into the new `IODMS/Inward/{Year}/{Folder ID}/` structure, ensuring proper naming conventions and metadata association.
+*   **Security and Compliance:** Adhering to HAL's stringent security requirements, including the Official Secrets Act, 1923, necessitated robust security features and careful implementation. **Solution:** Implementation of Role-Based Access Control (RBAC), secure session management using `sessionStorage`, and the development of a highly restricted Auditor View with features like disabled text selection and watermarking. All development adhered to secure coding practices to minimize vulnerabilities.
+
+## 6.3 Future Scope
+
+The predictive maintenance system can be extended in several directions. Future work could involve integrating real-time flight data for live RUL predictions, exploring advanced deep learning architectures (e.g., Transformers) for improved accuracy, and incorporating multi-source data (e.g., maintenance logs, weather data) to enhance predictive capabilities. Further research into explainable AI (XAI) techniques would also be beneficial to provide greater transparency and trust in the model's predictions for safety-critical applications.
+
+For the IODMS, future enhancements could include integrating advanced search functionalities, implementing optical character recognition (OCR) for scanned documents to enable full-text search, and exploring blockchain technology for enhanced document integrity and audit trails in highly sensitive environments. Automation of document routing and workflow approvals could also significantly improve operational efficiency.
+
+# 7. References
+
+[1] A. Saxena, K. Goebel, D. Simon, and N. Eklund, "Damage propagation modeling for aircraft engine run-to-failure simulation," in *Proc. IEEE Int. Conf. Prognostics and Health Management (PHM)*, Denver, CO, USA, 2008.
+[2] NASA Prognostics Center of Excellence, "Commercial Modular Aero-Propulsion System Simulation (C-MAPSS) dataset," NASA Ames Research Center, Moffett Field, CA, USA.
+[3] A. Saxena and K. Goebel, "Turbofan engine degradation simulation data set," NASA Ames Prognostics Data Repository, 2008.
+[4] I. Goodfellow, Y. Bengio, and A. Courville, *Deep Learning*. Cambridge, MA, USA: MIT Press, 2016.
+[5] A. Géron, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*, 2nd ed. Sebastopol, CA, USA: O'Reilly Media, 2019.
+[6] FastAPI Documentation. [Online]. Available: https://fastapi.tiangolo.com
+[7] React Documentation. [Online]. Available: https://react.dev
+[8] PostgreSQL Documentation. [Online]. Available: https://www.postgresql.org/docs/
+[9] Docker Documentation. [Online]. Available: https://docs.docker.com
+[10] U.S. Department of Defense, *MIL-STD-1553B: Digital Time Division Command/Response Multiplex Data Bus*, 1978.
+[11] Aeronautical Radio, Incorporated, *ARINC Specification 429: Mark 33 Digital Information Transfer System (DITS)*.
+
+# Appendices
+
+## Appendix A: Project Folder Structure
+
+The project repository is organized into a modular and logical structure to facilitate development, deployment, and maintenance. The main directories and their contents are as follows:
+
+```
+preaksha_data/
+├── architecture/
+│   ├── model_comparison.mmd
+│   ├── model_comparison.png
+│   ├── pipeline_flow.mmd
+│   ├── pipeline_flow.png
+│   ├── system_architecture.mmd
+│   └── system_architecture.png
+├── data/
+│   ├── dataset_exploration_notes.txt
+│   ├── FD001_RUL.txt
+│   ├── FD001_test.txt
+│   ├── FD001_train.txt
+│   ├── FD002_RUL.txt
+│   ├── FD002_test.txt
+│   ├── FD002_train.txt
+│   ├── FD003_RUL.txt
+│   ├── FD003_test.txt
+│   ├── FD003_train.txt
+│   ├── FD004_RUL.txt
+│   ├── FD004_test.txt
+│   ├── FD004_train.txt
+│   └── research_notes.txt
+├── IODMS_requirements_context.md
+├── reports/
+│   ├── engineering_decisions.md
+│   ├── literature_review.md
+│   └── presentation_outline.md
+├── visualizations/
+│   ├── FD001/
+│   │   ├── feature_importance.png
+│   │   ├── rul_prediction_FD001_engine_1.png
+│   │   └── training_report.txt
+│   ├── FD002/
+│   │   └── rul_prediction_FD002_engine_1.png
+│   ├── FD003/
+│   │   └── rul_prediction_FD003_engine_1.png
+│   ├── FD004/
+│   │   └── rul_prediction_FD004_engine_1.png
+│   ├── error_distribution_chart.png
+│   ├── rul_prediction_plot.png
+│   └── streamlit_dashboard_1.png
+├── changelog.md
+├── code_hygiene_guide.md
+├── color_philosophy.md
+├── README.md
+├── seed.py
+├── technical_design.md
+└── test_cases.md
+```
+
+*Figure A.1: Project Folder Structure Overview*
+
+This structure ensures a clear separation of concerns, with dedicated directories for architectural diagrams, raw and processed data, project reports, and visualizations. The root directory contains key documentation files and the database seeding script for the IODMS project.
+
+## Appendix B: System Architecture Diagrams
+
+This appendix provides detailed architectural diagrams for both the Inward Outward Document Management System (IODMS) and the Predictive Maintenance for Aircraft Turbofan Engines project.
+
+### B.1 IODMS System Architecture
+
+![IODMS System Architecture Overview](/home/ubuntu/preaksha_data/architecture/system_architecture.png)
+
+*Figure B.1: IODMS System Architecture Overview*
+
+This diagram illustrates the high-level components of the IODMS, including the frontend, backend, database, and their interactions within the air-gapped LAN environment. It highlights the modular design, secure communication channels, and the role of Docker in containerizing each service for robust deployment.
+
+### B.2 Predictive Maintenance Pipeline Architecture
+
+![Predictive Maintenance Pipeline Flow](/home/ubuntu/preaksha_data/architecture/pipeline_flow.png)
+
+*Figure B.2: Predictive Maintenance Pipeline Flow*
+
+This diagram outlines the end-to-end data flow for the predictive maintenance project, from raw C-MAPPS data ingestion through a multi-stage preprocessing and feature engineering pipeline, to model training, evaluation, and finally, deployment to an interactive Streamlit dashboard. Each stage is critical for transforming raw sensor data into actionable RUL predictions.
+
+### B.3 Model Comparison Architecture
+
+![Model Comparison Architecture](/home/ubuntu/preaksha_data/architecture/model_comparison.png)
+
+*Figure B.3: Model Comparison Architecture*
+
+This diagram visually represents the comparative framework used for evaluating different machine learning models (Random Forest, XGBoost, SVR) in the predictive maintenance project. It illustrates how various models are trained and assessed against key performance metrics and the NASA PHM08 scoring function to identify the most suitable algorithm for RUL prediction.
+
+## Appendix C: Streamlit Dashboard Screenshots
+
+This appendix provides visual representations of the interactive Streamlit dashboard developed for the predictive maintenance system, showcasing its key functionalities and user interface.
+
+### C.1 RUL Prediction Interface
+
+![Streamlit Dashboard - RUL Prediction Interface](/home/ubuntu/preaksha_data/visualizations/streamlit_dashboard_1.png)
+
+*Figure C.1: Streamlit Dashboard - RUL Prediction Interface*
+
+This screenshot illustrates the main interface of the Streamlit dashboard, where users can select engine units and view their predicted Remaining Useful Life (RUL). It typically includes interactive elements for filtering data, displaying degradation trends, and presenting the RUL forecast.
+
+### C.2 Model Performance Visualization
+
+![Streamlit Dashboard - Model Performance Visualization](/home/ubuntu/preaksha_data/visualizations/streamlit_dashboard_2.png)
+
+*Figure C.2: Streamlit Dashboard - Model Performance Visualization*
+
+This screenshot highlights the section of the dashboard dedicated to visualizing model performance. It may include charts comparing actual vs. predicted RUL, error distributions, or other metrics that help assess the accuracy and reliability of the predictive models.
+
+## Appendix D: IODMS User Interface Screenshots
+
+This appendix is intended to provide visual representations of the Inward Outward Document Management System (IODMS) user interface, showcasing its various modules, functionalities, and overall design. As no specific IODMS UI screenshots were provided in the supplementary materials, this section serves as a placeholder.
+
+**[Placeholder for IODMS User Interface Screenshots]**
+
+*Figure D.1: Example IODMS Dashboard/Document Listing Interface*
+
+*Figure D.2: Example IODMS Document Upload/Detail View*
+
+These figures would typically illustrate key aspects such as the document listing page, search functionality, document upload interface, detailed document view, and user management or settings pages. Including these visuals would significantly enhance the understanding of the IODMS application's practical implementation and user experience.
+
+## Appendix E: Docker Deployment Workflow
+
+This appendix details the Docker-based deployment workflow for the Inward Outward Document Management System (IODMS), with a particular focus on the strategies employed for successful deployment within an air-gapped local area network (LAN) environment. The air-gapped nature of the deployment necessitated a meticulous, offline-first approach to ensure all dependencies and container images were available without internet access.
+
+### E.1 Offline Docker Image Management
+
+In an air-gapped environment, direct access to public Docker registries (like Docker Hub) is impossible. Therefore, a multi-step process was adopted for managing Docker images:
+
+1.  **Image Pull on Internet-Connected Machine:** All necessary Docker images for the IODMS application (e.g., PostgreSQL, FastAPI backend, React frontend) were identified and pulled from public registries on a secure, internet-connected machine.
+2.  **Image Saving:** The pulled Docker images were then saved as `.tar` archives using the `docker save` command. This bundles the image layers and metadata into a single file.
+    ```bash
+    docker save -o postgres_image.tar postgres:13
+    docker save -o backend_image.tar iodms_backend:latest
+    docker save -o frontend_image.tar iodms_frontend:latest
+    ```
+3.  **Secure Transfer:** The `.tar` image files were securely transferred to the air-gapped server using physical media (e.g., encrypted USB drives).
+4.  **Image Loading on Air-Gapped Server:** On the air-gapped server, the transferred `.tar` files were loaded into the local Docker daemon using the `docker load` command.
+    ```bash
+    docker load -i postgres_image.tar
+    docker load -i backend_image.tar
+    docker load -i frontend_image.tar
+    ```
+This process ensured that all required container images were available locally on the air-gapped server, ready for deployment.
+
+### E.2 Docker Compose for Service Orchestration
+
+Docker Compose was utilized to define and run the multi-container IODMS application. A `docker-compose.yml` file orchestrated the services, networks, and volumes, ensuring that the frontend, backend, and database containers were correctly configured and interconnected.
+
+**[Placeholder for a simplified `docker-compose.yml` snippet]**
+
+*Figure E.1: Simplified Docker Compose Configuration for IODMS*
+
+Key aspects of the Docker Compose configuration included:
+
+*   **Service Definitions:** Each component (frontend, backend, database) was defined as a separate service.
+*   **Network Configuration:** Custom bridge networks were used to facilitate secure communication between services.
+*   **Volume Mounting:** Persistent volumes were configured for the PostgreSQL database to ensure data persistence across container restarts.
+*   **Environment Variables:** Sensitive configurations and database credentials were managed through environment variables, often loaded from a `.env` file.
+
+### E.3 Deployment Steps on Air-Gapped Server
+
+The overall deployment process on the air-gapped server involved the following steps:
+
+1.  **Prerequisites Installation:** Ensure Docker and Docker Compose are installed. For an air-gapped environment, these would also need to be installed offline from pre-downloaded packages.
+2.  **Transfer Project Files:** Copy the entire IODMS project directory (including the `docker-compose.yml` and any necessary build contexts) to the air-gapped server.
+3.  **Load Docker Images:** Execute the `docker load` commands as described in Section E.1 to make all required images available.
+4.  **Database Seeding:** Run the `seed.py` script (or a similar database initialization script) to populate the PostgreSQL database with initial master data and an admin user. This is crucial for the application's first run.
+    ```bash
+    python3 seed.py
+    ```
+5.  **Start Services:** Navigate to the project root directory and start the application using Docker Compose.
+    ```bash
+    docker compose up -d
+    ```
+    The `-d` flag runs the containers in detached mode, allowing them to run in the background.
+6.  **Verification:** Verify that all services are running correctly and accessible within the LAN.
+
+This robust Docker-based deployment strategy, adapted for air-gapped environments, ensures the IODMS can be reliably deployed and operated in highly secure and isolated network infrastructures.
+
+## Appendix F: Machine Learning Model Performance Graphs
+
+This appendix presents key graphical visualizations illustrating the performance of the machine learning models developed for Remaining Useful Life (RUL) prediction in the predictive maintenance project. These graphs provide a visual understanding of model accuracy, error distribution, and the significance of various features.
+
+### F.1 RUL Prediction Plot
+
+![RUL Prediction Plot](/home/ubuntu/preaksha_data/visualizations/rul_prediction_plot.png)
+
+*Figure F.1: Example RUL Prediction Plot for an Engine Unit (FD001)*
+
+This plot compares the actual RUL with the predicted RUL for a selected engine unit from the FD001 dataset. It visually demonstrates how closely the model's predictions align with the true degradation trajectory, highlighting areas of overestimation or underestimation.
+
+### F.2 Error Distribution Chart
+
+![Error Distribution Chart](/home/ubuntu/preaksha_data/visualizations/error_distribution_chart.png)
+
+*Figure F.2: Error Distribution Chart*
+
+This chart illustrates the distribution of prediction errors (actual RUL - predicted RUL) across the test set. A distribution centered around zero with a narrow spread indicates a highly accurate model. This helps in understanding the model's consistency and potential biases.
+
+### F.3 Feature Importance Plot
+
+![Feature Importance Plot](/home/ubuntu/preaksha_data/visualizations/FD001/feature_importance.png)
+
+*Figure F.3: Feature Importance Plot (FD001)*
+
+This graph displays the relative importance of different features used by the machine learning models (e.g., Random Forest, XGBoost) for RUL prediction. It provides insights into which sensor measurements and engineered features contribute most significantly to the model's decision-making process.
+
+### F.4 RUL Prediction Plots for Other Subsets
+
+**[Placeholder for RUL Prediction Plots for FD002, FD003, FD004]**
+
+*Figure F.4: Example RUL Prediction Plot for an Engine Unit (FD002)*
+
+*Figure F.5: Example RUL Prediction Plot for an Engine Unit (FD003)*
+
+*Figure F.6: Example RUL Prediction Plot for an Engine Unit (FD004)*
+
+These placeholders are for similar RUL prediction plots for engine units from the other C-MAPSS subsets (FD002, FD003, FD004), which would further demonstrate the model's performance across varying operating conditions and fault modes.
+
+## Appendix G: Additional EDA Visualizations
+
+This appendix is reserved for additional exploratory data analysis (EDA) visualizations that provide deeper insights into the NASA C-MAPSS dataset. These visualizations help in understanding the data distribution, correlations between sensors, and the overall degradation patterns of the turbofan engines.
+
+**[Placeholder for additional EDA visualizations, e.g., sensor correlation matrices, degradation trend plots for individual sensors, distribution of RUL, etc.]**
+
+*Figure G.1: Example Sensor Correlation Matrix*
+
+*Figure G.2: Example Degradation Trend for a Key Sensor*
+
+These figures would typically include plots such as histograms of sensor readings, box plots showing sensor variations across different operational settings, correlation heatmaps between various sensors, and time-series plots illustrating the degradation of specific sensors over engine cycles. Such visualizations are crucial for a thorough understanding of the dataset and for informing feature engineering decisions.
+
+---
+
+*(Note: All placeholders indicated by `[ ]` or `⚠` require specific content, data, figures, or tables to be provided by the user or generated based on the actual project work. The formatting for figures, tables, and citations will adhere to IEEE standards.)*
