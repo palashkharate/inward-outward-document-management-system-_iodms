@@ -300,7 +300,7 @@ def _pending_deletion_context(db: Session, deletion: models.PendingDeletion) -> 
             files.extend(_file_label(path) for path in (item.attachment_paths or []) if path != item.file_path)
             context.update({
                 "document_type": "Draft Outward",
-                "document_no": f"Outward No. {item.outward_no}",
+                "document_no": "Pending Dispatch",
                 "folder_id": item.folder_id,
                 "folder_name": _folder_name(db, item.folder_id),
                 "year": item.year,
@@ -562,13 +562,39 @@ def restore_from_trash(id: int, db: Session = Depends(get_db)):
             os.makedirs(os.path.dirname(orig_full), exist_ok=True)
             shutil.move(trash_full, orig_full)
             
-    # 2. Insert record back to DB
+    # 2. Restore record back to DB. Inward/outward deletion keeps the row so
+    # numbers remain lost for audit; restore updates that row instead of
+    # inserting a duplicate primary key.
     if table == "inward_register":
-        new_item = models.InwardRegister(**{k: v for k, v in data.items() if k not in ["created_at", "updated_at"]})
-        db.add(new_item)
+        existing = db.query(models.InwardRegister).filter(
+            models.InwardRegister.folder_id == data.get("folder_id"),
+            models.InwardRegister.year == data.get("year"),
+            models.InwardRegister.inward_no == data.get("inward_no")
+        ).first()
+        restore_data = {k: v for k, v in data.items() if k not in ["created_at", "updated_at"]}
+        if existing:
+            for key, value in restore_data.items():
+                setattr(existing, key, value)
+            existing.deleted_at = None
+            existing.deleted_by = None
+            existing.status = data.get("status") or "Active"
+        else:
+            db.add(models.InwardRegister(**restore_data))
     elif table == "outward_register":
-        new_item = models.OutwardRegister(**{k: v for k, v in data.items() if k not in ["created_at", "updated_at"]})
-        db.add(new_item)
+        existing = db.query(models.OutwardRegister).filter(
+            models.OutwardRegister.folder_id == data.get("folder_id"),
+            models.OutwardRegister.year == data.get("year"),
+            models.OutwardRegister.outward_no == data.get("outward_no")
+        ).first()
+        restore_data = {k: v for k, v in data.items() if k not in ["created_at", "updated_at"]}
+        if existing:
+            for key, value in restore_data.items():
+                setattr(existing, key, value)
+            existing.deleted_at = None
+            existing.deleted_by = None
+            existing.status = data.get("status") or "Active"
+        else:
+            db.add(models.OutwardRegister(**restore_data))
     elif table == "draft_files":
         new_item = models.DraftFile(**{k: v for k, v in data.items() if k not in ["created_on", "updated_at", "locked_at"]})
         db.add(new_item)
@@ -1024,9 +1050,10 @@ def upload_template(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """Uploads a new .docx template."""
-    if not file.filename.endswith('.docx'):
-        raise HTTPException(status_code=400, detail="Only .docx files are allowed")
+    """Uploads a new Word-compatible template."""
+    allowed_exts = (".doc", ".docx", ".rtf")
+    if not file.filename.lower().endswith(allowed_exts):
+        raise HTTPException(status_code=400, detail="Only .doc, .docx, or .rtf template files are allowed")
 
     # Create Templates directory if not exists
     relative_folder = "Templates"

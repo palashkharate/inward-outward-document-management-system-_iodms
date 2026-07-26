@@ -39,6 +39,10 @@ import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
 import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
 import EditHistoryModal from '../components/EditHistoryModal.jsx';
 
+const displayOutwardNo = (value) => (
+  value && !String(value).startsWith('DRAFT-') ? value : 'Pending Dispatch'
+);
+
 function DraftRow({ row, onAction, user, onViewFile }) {
   const [open, setOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -68,7 +72,7 @@ function DraftRow({ row, onAction, user, onViewFile }) {
           </IconButton>
         </TableCell>
         <TableCell component="th" scope="row" fontWeight={600}>
-          {row.outward_no}
+          {displayOutwardNo(row.outward_no)}
         </TableCell>
         <TableCell>{row.folder_id}</TableCell>
         <TableCell>{row.folder_name}</TableCell>
@@ -106,7 +110,9 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <Typography variant="caption" color="text.secondary">Document Format:</Typography>
-                  <Typography variant="body2">MS Word 97-2003 (.doc)</Typography>
+                  <Typography variant="body2">
+                    {row.file_path?.toLowerCase().endsWith('.pdf') ? 'PDF' : 'MS Word 97-2003 compatible (.doc)'}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <Typography variant="caption" color="text.secondary">Created On:</Typography>
@@ -499,7 +505,7 @@ export default function DraftsDispatchPage() {
         <DialogTitle sx={{ color: 'warning.main', fontWeight: 'bold' }}>Draft Locked for Editing</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            You have successfully locked Outward No. <strong>{activeDraft?.outward_no}</strong>.
+            You have successfully locked draft <strong>{displayOutwardNo(activeDraft?.outward_no)}</strong>.
           </Typography>
           
           <Box sx={{ bgcolor: 'rgba(0,0,0,0.2)', p: 2, borderRadius: 1.5, mb: 3, border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -551,8 +557,8 @@ export default function DraftsDispatchPage() {
         <DialogTitle>Confirm Dispatch</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to dispatch Outward No. <strong>{activeDraft?.outward_no}</strong>?<br />
-            This will sequentialize the document, move it to the final Outward Register, and clear the draft.
+            Are you sure you want to dispatch this draft?<br />
+            This will assign the next official outward number, move it to the final Outward Register, and clear the draft.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -566,7 +572,7 @@ export default function DraftsDispatchPage() {
         <DialogTitle>Confirm Discard</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to discard Outward No. <strong>{activeDraft?.outward_no}</strong>?<br />
+            Are you sure you want to discard this draft?<br />
             This will submit a discard request to the Admin. The draft will remain greyed out in this list until approved or rejected.
           </Typography>
         </DialogContent>
@@ -581,7 +587,7 @@ export default function DraftsDispatchPage() {
         <DialogTitle>Upload Supporting Files</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Add more files to Outward No. <strong>{activeDraft?.outward_no}</strong>. The main draft document remains unchanged.
+            Add more files to this draft. The main draft document remains unchanged.
           </Typography>
           <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
             Select Files

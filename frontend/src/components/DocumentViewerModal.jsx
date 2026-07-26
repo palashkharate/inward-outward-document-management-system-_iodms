@@ -24,6 +24,16 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
   
   const containerRef = useRef(null);
   const isDocx = fileName?.toLowerCase().endsWith('.docx');
+  const isLegacyDoc = fileName?.toLowerCase().endsWith('.doc') || fileName?.toLowerCase().endsWith('.rtf');
+
+  const stripRtf = (text) => text
+    .replace(/\\line\s?/g, '\n')
+    .replace(/\\par\s?/g, '\n')
+    .replace(/\\'[0-9a-fA-F]{2}/g, '')
+    .replace(/\\[a-zA-Z]+-?\d*\s?/g, '')
+    .replace(/[{}]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 
   useEffect(() => {
     if (!open || !fileUrl) {
@@ -37,6 +47,10 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
     const fetchDocument = async () => {
       setLoading(true);
       setErrorMsg('');
+      setTextPreview('');
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
       try {
         const response = await axios.get(fileUrl, { responseType: 'blob' });
         if (!isMounted) return;
@@ -44,6 +58,7 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
         const blob = new Blob([response.data], { 
           type: isPdf ? 'application/pdf' : 
                 isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 
+                isLegacyDoc ? 'application/msword' :
                 'application/octet-stream' 
         });
         
@@ -65,7 +80,7 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [open, fileUrl, isPdf, isDocx]);
+  }, [open, fileUrl, isPdf, isDocx, isLegacyDoc]);
 
   useEffect(() => {
     if (isDocx && fileBlob && containerRef.current) {
@@ -86,6 +101,17 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
       }
     }
   }, [isDocx, fileBlob, containerRef]);
+
+  useEffect(() => {
+    if (isLegacyDoc && fileBlob) {
+      fileBlob.text().then((text) => {
+        const readable = text.includes('{\\rtf') ? stripRtf(text) : text;
+        setTextPreview(readable || 'Preview not available. Download the file to open it in Microsoft Word.');
+      }).catch(() => {
+        setTextPreview('Preview not available. Download the file to open it in Microsoft Word.');
+      });
+    }
+  }, [isLegacyDoc, fileBlob]);
 
   const handleDownload = () => {
     if (blobUrl) {
@@ -141,7 +167,7 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
                   bgcolor: '#f5f5f5' // docx-preview adds white pages on top of background
                 }} 
               />
-            ) : isDocx && textPreview ? (
+            ) : (isDocx || isLegacyDoc) && textPreview ? (
               <Box sx={{ p: 3, whiteSpace: 'pre-wrap', fontFamily: 'Consolas, monospace', overflow: 'auto', height: '100%' }}>
                 {textPreview}
               </Box>

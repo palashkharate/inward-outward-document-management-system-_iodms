@@ -20,7 +20,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # --- Pydantic Request Models ---
 class DraftCreate(BaseModel):
-    outward_no: str
+    outward_no: Optional[str] = None
     folder_id: str
     issuing_date: str
     address_to: List[int]
@@ -89,7 +89,7 @@ def get_next_outward_no(folder_id: str, year: int, db: Session) -> str:
     """Gets the next sequential Outward Number by looking at the whole outward year.
     
     Implements:
-    - FR-055: Reserves the number immediately on creation to prevent concurrency conflicts.
+    - FR-055: Assigns outward numbers only when a draft is dispatched.
       Outward numbers are yearly global numbers; Folder ID only controls storage grouping.
     """
     # 1. Fetch from outward_register for the whole year, not per Folder ID.
@@ -97,13 +97,8 @@ def get_next_outward_no(folder_id: str, year: int, db: Session) -> str:
         models.OutwardRegister.year == year
     ).all()
     
-    # 2. Fetch from draft_files for the whole year, not per Folder ID.
-    draft_nos = db.query(models.DraftFile.outward_no).filter(
-        models.DraftFile.year == year
-    ).all()
-    
     numbers = []
-    for (no_str,) in register_nos + draft_nos:
+    for (no_str,) in register_nos:
         try:
             numbers.append(int(no_str))
         except ValueError:
@@ -117,6 +112,146 @@ def get_next_outward_no(folder_id: str, year: int, db: Session) -> str:
         return f"{next_val:03d}"
     else:
         return str(next_val)
+
+
+def build_outward_reference(data: dict) -> str:
+    outward_no = data.get("outward_no")
+    folder_id = data.get("folder_id") or ""
+    year = data.get("year") or ""
+    if not outward_no or str(outward_no).upper().startswith(("DRAFT", "PENDING")):
+        return f"HAL/NK/D/DAE/{folder_id}/{year}/Pending Dispatch"
+    return f"HAL/NK/D/DAE/{folder_id}/{year}/{outward_no}"
+
+
+def get_address_text(db: Session, address_ids: list[int]) -> str:
+    if not address_ids:
+        return ""
+    addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == address_ids[0]).first()
+    if not addr:
+        return ""
+    return "\n".join(filter(None, [
+        addr.name,
+        addr.designation,
+        addr.organisation,
+        addr.address_line_1,
+        addr.address_line_2
+    ]))
+
+
+def get_cc_text(db: Session, cc_ids: list[int]) -> str:
+    names = []
+    for cc_id in cc_ids or []:
+        addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == cc_id).first()
+        if addr:
+            names.append(addr.name)
+    return ", ".join(names)
+
+
+def build_template_replacements(data: dict, db: Session) -> dict:
+    return {
+        "outward_reference": build_outward_reference(data),
+        "folder_id": data.get("folder_id") or "",
+        "year": data.get("year") or "",
+        "outward_no": data.get("outward_no") or "",
+        "subject": data.get("subject") or "",
+        "date": data.get("issuing_date") or datetime.date.today().isoformat(),
+        "prepared_by": data.get("prepared_by") or "",
+        "to": get_address_text(db, data.get("address_to") or []),
+        "cc": get_cc_text(db, data.get("cc_to") or []),
+        "remarks": data.get("remarks") or ""
+    }
+
+
+def replace_docx_placeholders(filepath: str, replacements: dict):
+    from docx import Document
+
+    doc = Document(filepath)
+    paragraphs = list(doc.paragraphs)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                paragraphs.extend(cell.paragraphs)
+
+    for paragraph in paragraphs:
+        for key, value in replacements.items():
+            token = "{{" + key + "}}"
+            if token in paragraph.text:
+                for run in paragraph.runs:
+                    run.text = run.text.replace(token, str(value or ""))
+    doc.save(filepath)
+
+
+def replace_text_placeholders(filepath: str, replacements: dict):
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        for key, value in replacements.items():
+            content = content.replace("{{" + key + "}}", str(value or ""))
+        if replacements.get("outward_reference"):
+            content = content.replace(
+                "Draft - outward number will be assigned on dispatch",
+                str(replacements["outward_reference"])
+            )
+        if replacements.get("outward_no"):
+            content = content.replace("Pending Dispatch", str(replacements["outward_no"]))
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception:
+        pass
+
+
+def is_rtf_or_text_word_file(filepath: str) -> bool:
+    try:
+        with open(filepath, "rb") as f:
+            start = f.read(16).lstrip()
+        return start.startswith(b"{\\rtf") or not start.startswith(b"\xd0\xcf\x11\xe0")
+    except Exception:
+        return False
+
+
+def stamp_outward_reference(filepath: str, data: dict, db: Session):
+    if not os.path.exists(filepath):
+        return
+    try:
+        lower = filepath.lower()
+        if lower.endswith(".docx"):
+            replace_docx_placeholders(filepath, build_template_replacements(data, db))
+        elif lower.endswith((".doc", ".rtf", ".txt")) and is_rtf_or_text_word_file(filepath):
+            replace_text_placeholders(filepath, build_template_replacements(data, db))
+    except Exception:
+        pass
+
+
+def rtf_escape(value: str) -> str:
+    return str(value or "").replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\line ")
+
+
+def create_rtf_document_content(data: dict, db: Session) -> str:
+    address_str = get_address_text(db, data.get("address_to") or [])
+    cc_str = get_cc_text(db, data.get("cc_to") or [])
+    outward_reference = build_outward_reference(data)
+    return r"""{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+\fs24\b HAL AURDC, NASHIK - DEA\b0\par
+\par
+\b Reference:\b0 """ + rtf_escape(outward_reference) + r"""\par
+\b Date:\b0 """ + rtf_escape(data.get("issuing_date")) + r"""\par
+\b Folder ID:\b0 """ + rtf_escape(data.get("folder_id")) + r"""\par
+\b Prepared By:\b0 """ + rtf_escape(data.get("prepared_by")) + r"""\par
+\par
+\b To\b0\par
+""" + rtf_escape(address_str or "To be filled") + r"""\par
+\par
+\b CC:\b0 """ + rtf_escape(cc_str) + r"""\par
+\par
+\b Subject:\b0 """ + rtf_escape(data.get("subject")) + r"""\par
+\par
+Dear Sir/Madam,\par
+\par
+[Place your letter body contents here...]\par
+\par
+\b Remarks:\b0 """ + rtf_escape(data.get("remarks") or "") + r"""\par
+}"""
 
 
 # FR-042: Generate Word document draft with placeholder tags
@@ -137,70 +272,27 @@ def create_draft_document(filepath: str, data: dict, db: Session):
     if template:
         src_path = os.path.join(get_iodms_root_path(), template.file_path)
         if os.path.exists(src_path):
-            shutil.copyfile(src_path, filepath)
-            return
+            try:
+                src_ext = os.path.splitext(src_path)[1].lower()
+                if src_ext == ".docx" and filepath.lower().endswith(".docx"):
+                    shutil.copyfile(src_path, filepath)
+                    replace_docx_placeholders(filepath, build_template_replacements(data, db))
+                    return
+                if src_ext in [".doc", ".rtf", ".txt"]:
+                    shutil.copyfile(src_path, filepath)
+                    if is_rtf_or_text_word_file(filepath):
+                        replace_text_placeholders(filepath, build_template_replacements(data, db))
+                    return
+            except Exception:
+                pass
             
-    # Fallback to a valid DOCX so the in-browser viewer can render it.
-    address_str = ""
-    if data.get("address_to"):
-        addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == data["address_to"][0]).first()
-        if addr:
-            address_str = f"{addr.name}\n{addr.designation or ''}\n{addr.organisation or ''}\n{addr.address_line_1 or ''}\n{addr.address_line_2 or ''}"
-            
-    cc_names = []
-    if data.get("cc_to"):
-        for cc_id in data["cc_to"]:
-            addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == cc_id).first()
-            if addr:
-                cc_names.append(addr.name)
-    cc_str = ", ".join(cc_names)
-
-    try:
-        from docx import Document
-
-        doc = Document()
-        doc.add_heading("HAL AURDC, NASHIK - DEA", level=1)
-        doc.add_paragraph(f"Outward Reference No: {data.get('outward_no')}")
-        doc.add_paragraph(f"Date: {data.get('issuing_date')}")
-        doc.add_paragraph(f"Folder ID: {data.get('folder_id')}")
-        doc.add_paragraph(f"Template ID: {data.get('template_type')}")
-        doc.add_paragraph(f"Prepared By: {data.get('prepared_by')}")
-        doc.add_heading("To", level=2)
-        doc.add_paragraph(address_str or "To be filled")
-        doc.add_paragraph(f"CC: {cc_str}")
-        doc.add_heading(f"Subject: {data.get('subject')}", level=2)
-        doc.add_paragraph("Dear Sir/Madam,")
-        doc.add_paragraph("[Place your letter body contents here...]")
-        doc.add_paragraph(f"Remarks: {data.get('remarks') or ''}")
-        doc.save(filepath)
-    except Exception:
-        content = f"""HAL AURDC, NASHIK - DESIGN & ENGINEERING ACTIVITY (DEA)
-Outward Reference No: {data.get('outward_no')}
-Date: {data.get('issuing_date')}
-Folder ID: {data.get('folder_id')}
-Template ID: {data.get('template_type')}
-Prepared By: {data.get('prepared_by')}
-
-TO:
-{address_str}
-
-CC: {cc_str}
-
-SUBJECT: {data.get('subject')}
-
-Dear Sir/Madam,
-
-[Place your letter body contents here...]
-
-Remarks: {data.get('remarks')}
-"""
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(create_rtf_document_content(data, db))
 
 
 # --- Endpoints ---
 
-# FR-055: Reserve Outward No.
+# FR-055: Preview next Outward No. without reserving it
 @router.get("/next-no")
 def get_next_no(
     folder_id: str, 
@@ -208,57 +300,14 @@ def get_next_no(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Reserves the next available Outward number.
+    """Previews the next available Outward number without reserving it.
     
     Implements:
-    - FR-055: Pre-assigns the Outward No. when Compose Outward opens.
-    - FR-055: Prevents duplicate reserved numbers while allowing officers to keep many saved drafts.
+    - FR-055: Outward numbers are assigned only at dispatch.
     - FR-144: Support target_year override for previous year entries.
     """
-    user_id = current_user.get("user_id")
     year = target_year if target_year else get_effective_year()
-    
-    # Saved drafts do not block new drafts. Only an unfinished reservation is reused
-    # so refresh/reset clicks do not burn several outward numbers before Save Draft.
-    existing_reserved = db.query(models.DraftFile).filter(
-        models.DraftFile.actioned_by == user_id,
-        models.DraftFile.file_path == "[Reserved]"
-    ).first()
-    if existing_reserved:
-        if existing_reserved.year == year:
-            existing_reserved.folder_id = folder_id
-            db.commit()
-            return {"outward_no": existing_reserved.outward_no, "year": existing_reserved.year, "reused": True}
-        raise HTTPException(
-            status_code=400,
-            detail=f"You already have an unused reserved Outward Number for Year {existing_reserved.year}. Please save it before reserving a number for another year."
-        )
-
-    # Retry loop to reserve the number
-    for attempt in range(3):
-        next_no = get_next_outward_no(folder_id, year, db)
-        reserved_draft = models.DraftFile(
-            file_path="[Reserved]",
-            outward_no=next_no,
-            folder_id=folder_id,
-            issuing_date=datetime.date.today(),
-            address_to=[],
-            cc_to=[],
-            subject="[Reserved Draft]",
-            remarks="",
-            prepared_by=user_id,
-            actioned_by=user_id,
-            template_type="Reserved",
-            year=year
-        )
-        try:
-            db.add(reserved_draft)
-            db.commit()
-            return {"outward_no": next_no, "year": year}
-        except Exception:
-            db.rollback()
-            
-    raise HTTPException(status_code=500, detail="Failed to reserve outward number due to high concurrency. Please try again.")
+    return {"outward_no": get_next_outward_no(folder_id, year, db), "year": year, "reserved": False}
 
 
 # FR-042: Save Draft
@@ -271,39 +320,24 @@ def save_draft(
     """Saves outward details as a draft and generates a .doc file on disk.
     
     Implements:
-    - FR-042: Generates a draft file under IODMS/Drafts/{Year}/{FolderID}/fax-...doc
+    - FR-042: Generates a draft file under IODMS/Drafts/{Year}/{FolderID}/draft-...doc
     - FR-144: Support target_year override
     """
     year = payload.target_year if payload.target_year else get_effective_year()
-    outward_no = payload.outward_no
     actor_id = current_user.get("user_id")
-    
-    if not outward_no or outward_no.strip() == "":
-        raise HTTPException(status_code=400, detail="Outward Number is required")
 
-    # Find the reserved draft
-    draft_record = db.query(models.DraftFile).filter(
-        models.DraftFile.folder_id == payload.folder_id,
-        models.DraftFile.year == year,
-        models.DraftFile.outward_no == outward_no,
-        models.DraftFile.actioned_by == actor_id,
-        models.DraftFile.file_path == "[Reserved]"
-    ).first()
-
-    if not draft_record:
-        raise HTTPException(status_code=400, detail="Outward Number is no longer reserved or was already used.")
-
-    # Filename format: draft-{UserID}-{YYYYMMDD}-{HHMMSS}.docx
+    # Filename format: draft-{UserID}-{YYYYMMDD}-{HHMMSS}.doc
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = f"draft-{actor_id}-{timestamp}.docx"
+    draft_marker = "DRAFT"
+    filename = f"draft-{actor_id}-{timestamp}.doc"
     
     relative_folder, full_folder = filesystem_utils.ensure_folder_path(get_iodms_root_path(), "Drafts", year, payload.folder_id)
     relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
     full_path = os.path.join(full_folder, filename)
     
-    # Update payload with the actual outward_no if it changed
     payload_dict = payload.model_dump()
-    payload_dict["outward_no"] = outward_no
+    payload_dict["outward_no"] = None
+    payload_dict["year"] = year
     payload_dict["actioned_by"] = actor_id
     
     # Save the physical file on disk (FR-042)
@@ -314,24 +348,28 @@ def save_draft(
 
     iss_date = parse_document_date(payload.issuing_date)
 
-    # Update the reserved draft record
-    draft_record.file_path = relative_path
-    draft_record.issuing_date = iss_date
-    draft_record.address_to = payload.address_to
-    draft_record.cc_to = payload.cc_to
-    draft_record.subject = payload.subject
-    draft_record.remarks = payload.remarks
-    draft_record.prepared_by = payload.prepared_by
-    draft_record.actioned_by = actor_id
-    draft_record.template_type = payload.template_type
-    draft_record.linked_documents = payload.linked_documents
-    draft_record.attachment_paths = [relative_path]
+    draft_record = models.DraftFile(
+        file_path=relative_path,
+        outward_no=draft_marker,
+        folder_id=payload.folder_id,
+        issuing_date=iss_date,
+        address_to=payload.address_to,
+        cc_to=payload.cc_to,
+        subject=payload.subject,
+        remarks=payload.remarks,
+        prepared_by=payload.prepared_by,
+        actioned_by=actor_id,
+        template_type=payload.template_type,
+        linked_documents=payload.linked_documents,
+        attachment_paths=[relative_path],
+        year=year
+    )
+    db.add(draft_record)
+    db.flush()
     log_edit(db, "draft", str(draft_record.draft_id), "create", actor_id, payload_dict)
-    
-    # We do NOT add a new record, we just commit the update
-    # db.add(draft_record) is not needed because it's already attached to the session
+
     db.commit()
-    return {"message": "Draft created successfully", "draft_id": draft_record.draft_id, "outward_no": outward_no, "success": True}
+    return {"message": "Draft created successfully. Outward number will be assigned on dispatch.", "draft_id": draft_record.draft_id, "outward_no": None, "success": True}
 
 
 # FR-170b: Attach supporting files to an outward draft from Compose Outward
@@ -436,14 +474,15 @@ def upload_existing_draft(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Uploads an existing PDF or DOCX file directly as a new Draft.
+    """Uploads one or more existing files directly as a new draft.
     
     Implements:
     - FR-057: Bypasses template generation and uses user-uploaded file.
     """
     year = get_effective_year()
     actor_id = current_user.get("user_id")
-    outward_no = get_next_outward_no(folder_id, year, db)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    draft_marker = "DRAFT"
     
     attachment_paths = []
     any_compressed = False
@@ -455,11 +494,10 @@ def upload_existing_draft(
         if not file.filename: continue
         ext = os.path.splitext(file.filename)[1]
         
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         if len(files) > 1:
-            filename = f"fax-{actor_id}-{timestamp}_{idx+1}{ext}"
+            filename = f"draft-{actor_id}-{timestamp}_{idx+1}{ext}"
         else:
-            filename = f"fax-{actor_id}-{timestamp}{ext}"
+            filename = f"draft-{actor_id}-{timestamp}{ext}"
         
         relative_folder, full_folder = filesystem_utils.ensure_folder_path(get_iodms_root_path(), "Drafts", year, folder_id)
         relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
@@ -489,7 +527,7 @@ def upload_existing_draft(
     new_draft = models.DraftFile(
         file_path=attachment_paths[0] if attachment_paths else "",
         attachment_paths=attachment_paths,
-        outward_no=outward_no,
+        outward_no=draft_marker,
         folder_id=folder_id,
         issuing_date=iss_date,
         address_to=addr_list,
@@ -506,12 +544,12 @@ def upload_existing_draft(
     db.add(new_draft)
     db.commit()
     log_edit(db, "draft", str(new_draft.draft_id), "create", actor_id, {
-        "outward_no": outward_no,
+        "outward_no": None,
         "folder_id": folder_id,
         "subject": subject,
         "uploaded_files": attachment_paths
     })
-    return {"message": "Draft uploaded successfully", "draft_id": new_draft.draft_id, "outward_no": outward_no, "success": True}
+    return {"message": "Draft uploaded successfully. Outward number will be assigned on dispatch.", "draft_id": new_draft.draft_id, "outward_no": None, "success": True}
 
 # FR-052: Re-Upload Draft File (after editing)
 @router.put("/drafts/{draft_id}/reupload")
@@ -610,7 +648,11 @@ def modify_outward(
     # Recreate the file on disk
     full_path = os.path.join(get_iodms_root_path(), record.document_path)
     try:
-        create_draft_document(full_path, payload.model_dump(), db)
+        payload_dict = payload.model_dump()
+        payload_dict["outward_no"] = outward_no
+        payload_dict["folder_id"] = folder_id
+        payload_dict["year"] = year
+        create_draft_document(full_path, payload_dict, db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to overwrite file on disk: {str(e)}")
 
@@ -640,6 +682,8 @@ def get_drafts(db: Session = Depends(get_db)):
     ).all()
     pending_ids = {int(pd.record_id) for pd in pending_deletes if str(pd.record_id).isdigit()}
 
+    # Hide legacy reservation placeholders from builds created before outward
+    # numbers moved to dispatch time.
     query = db.query(models.DraftFile).filter(models.DraftFile.file_path != "[Reserved]")
     drafts = query.all()
     
@@ -772,20 +816,11 @@ def dispatch_draft(
     year = draft.year
     folder_id = draft.folder_id
     
-    # Auto-generate next sequential outward number (FR-054)
-    # Note: the reserved number is draft.outward_no, but we re-fetch to make sure there are no gaps
-    outward_no = draft.outward_no
-
-    # If the reserved number is already used in register, fetch next
-    register_conflict = db.query(models.OutwardRegister).filter(
-        models.OutwardRegister.year == year,
-        models.OutwardRegister.outward_no == outward_no
-    ).first()
-    if register_conflict:
-         outward_no = get_next_outward_no(folder_id, year, db)
+    # FR-055/FR-054: Assign official outward number only at dispatch.
+    outward_no = get_next_outward_no(folder_id, year, db)
 
     # File rename & move (FR-054)
-    # From: Drafts/{Year}/{FolderID}/fax-...{ext}
+    # From: Drafts/{Year}/{FolderID}/draft-...{ext}
     # To: Outward/{Year}/{FolderID}/{OutwardNo}.{ext}
     old_relative_path = draft.file_path
     
@@ -805,14 +840,12 @@ def dispatch_draft(
     full_old_path = os.path.join(get_iodms_root_path(), old_relative_path)
 
     # If there are multiple files (from direct upload), move them all
-    new_attachment_paths = []
+    new_attachment_paths = [new_relative_path]
     if draft.attachment_paths:
-        for idx, p in enumerate(draft.attachment_paths):
+        supporting_paths = [p for p in draft.attachment_paths if p and p != draft.file_path]
+        for idx, p in enumerate(supporting_paths):
             p_ext = os.path.splitext(p)[1]
-            if len(draft.attachment_paths) > 1:
-                p_filename = f"{outward_no}_{idx+1}{p_ext}"
-            else:
-                p_filename = f"{outward_no}{p_ext}"
+            p_filename = f"{outward_no}_attachment_{idx+1}{p_ext}"
             
             try:
                 new_p, _ = filesystem_utils.move_draft_to_outward(
@@ -829,6 +862,7 @@ def dispatch_draft(
         # If draft file is missing, create it directly in Outward folder
         create_draft_document(full_new_path, {
             "outward_no": outward_no,
+            "year": year,
             "issuing_date": datetime.date.today().isoformat(),
             "folder_id": folder_id,
             "template_type": draft.template_type,
@@ -838,6 +872,19 @@ def dispatch_draft(
             "subject": draft.subject,
             "remarks": draft.remarks
         }, db)
+
+    stamp_outward_reference(full_new_path, {
+        "outward_no": outward_no,
+        "year": year,
+        "issuing_date": draft.issuing_date.isoformat(),
+        "folder_id": folder_id,
+        "template_type": draft.template_type,
+        "prepared_by": draft.prepared_by,
+        "address_to": draft.address_to,
+        "cc_to": draft.cc_to,
+        "subject": draft.subject,
+        "remarks": draft.remarks
+    }, db)
 
     # Insert record into Outward Register
     new_outward = models.OutwardRegister(
@@ -1042,12 +1089,20 @@ def view_document(path: str, db: Session = Depends(get_db)):
     full_path = os.path.abspath(os.path.join(root_path, path.lstrip("/\\")))
     
     # Path traversal check
-    if not full_path.startswith(root_path):
+    if os.path.commonpath([root_path, full_path]) != root_path:
         raise HTTPException(status_code=403, detail="Forbidden: Path traversal detected")
         
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="File not found on server disk")
-    return FileResponse(full_path)
+
+    ext = os.path.splitext(full_path)[1].lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".doc": "application/msword",
+        ".rtf": "application/rtf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    }
+    return FileResponse(full_path, media_type=media_types.get(ext, "application/octet-stream"), filename=os.path.basename(full_path))
 
 # FR-058: Edit Audit Log Endpoint
 @router.get("/edit-log/{record_type}/{record_id}")

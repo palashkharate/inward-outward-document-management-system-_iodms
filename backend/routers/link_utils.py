@@ -68,13 +68,15 @@ def _get_document_record(db: Session, target_id: str):
             return db.query(models.InwardRegister).filter(
                 models.InwardRegister.folder_id == folder_id,
                 models.InwardRegister.year == year_int,
-                models.InwardRegister.inward_no == doc_no
+                models.InwardRegister.inward_no == doc_no,
+                models.InwardRegister.status == "Active"
             ).first()
         elif doc_type == "outward":
             return db.query(models.OutwardRegister).filter(
                 models.OutwardRegister.folder_id == folder_id,
                 models.OutwardRegister.year == year_int,
-                models.OutwardRegister.outward_no == doc_no
+                models.OutwardRegister.outward_no == doc_no,
+                models.OutwardRegister.status == "Active"
             ).first()
     except Exception as e:
         logger.error(f"Error parsing document target ID {target_id}: {str(e)}")

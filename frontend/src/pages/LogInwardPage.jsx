@@ -23,8 +23,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemButton,
-  Autocomplete
+  ListItemButton
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -33,6 +32,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { useAuth } from '../App.jsx';
+import DocumentLinkPicker from '../components/DocumentLinkPicker.jsx';
 
 export default function LogInwardPage() {
   const { user } = useAuth();
@@ -63,7 +63,6 @@ export default function LogInwardPage() {
   const [ccSentTo, setCcSentTo] = useState([]); // address IDs
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [linkedDocuments, setLinkedDocuments] = useState([]);
-  const [availableDocuments, setAvailableDocuments] = useState([]);
 
   // Master Lists
   const [usersList, setUsersList] = useState([]);
@@ -116,10 +115,6 @@ export default function LogInwardPage() {
           setInNo('');
           setIsReserved(false);
         }
-        
-        // Fetch available documents for linking
-        const docsRes = await axios.get('/api/dashboard/search-documents?query=');
-        setAvailableDocuments(docsRes.data);
       } catch (e) {
         setErrorMsg('Failed to load form master lists.');
       }
@@ -199,8 +194,6 @@ export default function LogInwardPage() {
     const found = folderTypes.find(f => f.folder_id === id);
     if (found) {
       setFolderName(found.folder_name);
-      setInNo('');
-      setIsReserved(false);
     }
   };
 
@@ -209,12 +202,10 @@ export default function LogInwardPage() {
     const found = folderTypes.find(f => f.folder_name === name);
     if (found) {
       setFolderId(found.folder_id);
-      setInNo('');
-      setIsReserved(false);
     }
   };
 
-  const handleNew = () => {
+  const handleNew = (preserveMessages = false) => {
     setInwardLetterNo('');
     setInwardDate('');
     setReceivedFrom('');
@@ -225,8 +216,10 @@ export default function LogInwardPage() {
     setCcSentTo([]);
     setUploadedFiles([]);
     setLinkedDocuments([]);
-    setSuccessMsg('');
-    setErrorMsg('');
+    if (!preserveMessages) {
+      setSuccessMsg('');
+      setErrorMsg('');
+    }
     setIsReserved(false);
     setInNo('');
     if (folderTypes.length > 0) {
@@ -353,8 +346,8 @@ export default function LogInwardPage() {
         const response = await axios.post('/api/inward', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        setSuccessMsg(`Inward document registered successfully! Assigned Inward No: ${response.data.inward_no}`);
-        handleNew();
+        handleNew(true);
+        setSuccessMsg(`Inward document saved successfully. Assigned Inward No: ${response.data.inward_no}`);
       }
     } catch (err) {
       setErrorMsg(err.response?.data?.detail || 'Failed to save inward log.');
@@ -666,44 +659,13 @@ export default function LogInwardPage() {
               />
             </Grid>
 
-            {/* Linked Documents Autocomplete (FR-171) */}
+            {/* Linked Documents (FR-171) */}
             <Grid item xs={12}>
-              <Autocomplete
-                multiple
-                options={availableDocuments}
-                getOptionLabel={(option) => {
-                  if (typeof option === 'string') {
-                    // Try to find the document object if we only have the ID (like when modifying an existing record)
-                    const doc = availableDocuments.find(d => d.id === option);
-                    if (doc) return `${doc.type.toUpperCase()}: ${doc.subject} (${doc.id})`;
-                    return option; // Fallback
-                  }
-                  return `${option.type.toUpperCase()}: ${option.subject} (${option.id})`;
-                }}
-                value={linkedDocuments.map(id => availableDocuments.find(d => d.id === id) || id)}
-                onChange={(event, newValue) => {
-                  setLinkedDocuments(newValue.map(v => typeof v === 'string' ? v : v.id));
-                }}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    variant="outlined"
-                    label="Link to existing Documents"
-                    placeholder="Search by ID, Subject, Name"
-                  />
-                )}
-                renderOption={(props, option) => (
-                  <li {...props}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="body2" fontWeight="bold">
-                        {option.type.toUpperCase()} - {option.id}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {option.subject} | {option.folder_name} | {option.date}
-                      </Typography>
-                    </Box>
-                  </li>
-                )}
+              <DocumentLinkPicker
+                value={linkedDocuments}
+                onChange={setLinkedDocuments}
+                folders={folderTypes}
+                excludeId={isModifyMode ? `inward:${folder_id}:${year}:${inward_no}` : ''}
               />
             </Grid>
 

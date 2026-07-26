@@ -20,8 +20,7 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
-  Alert,
-  Autocomplete
+  Alert
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -30,6 +29,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useAuth } from '../App.jsx';
+import DocumentLinkPicker from '../components/DocumentLinkPicker.jsx';
 
 const MIN_DOCUMENT_DATE = '1947-08-15';
 const todayIsoDate = () => new Date().toISOString().split('T')[0];
@@ -58,7 +58,6 @@ export default function ComposeOutwardPage() {
   const [remarks, setRemarks] = useState('');
   const [ccList, setCcList] = useState([]); // selected CC address IDs
   const [linkedDocuments, setLinkedDocuments] = useState([]);
-  const [availableDocuments, setAvailableDocuments] = useState([]);
   const [attachmentFiles, setAttachmentFiles] = useState([]);
 
   // Master Lists (fetched from API)
@@ -73,8 +72,6 @@ export default function ComposeOutwardPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  // FR-055: Track whether outward number has been explicitly reserved
-  const [isReserved, setIsReserved] = useState(false);
   const autosaveKey = `compose_outward_draft_${user?.user_id || 'guest'}`;
 
   // Fetch initial master data
@@ -94,9 +91,6 @@ export default function ComposeOutwardPage() {
         setContacts(addrRes.data.results);
         setTemplates(templatesRes.data);
         
-        const docsRes = await axios.get('/api/dashboard/search-documents?query=');
-        setAvailableDocuments(docsRes.data);
-        
         if (templatesRes.data.length > 0 && !isModifyMode) {
            setTemplateType(templatesRes.data[0].id.toString());
         }
@@ -108,7 +102,6 @@ export default function ComposeOutwardPage() {
           setFolderId(first.folder_id);
           setFolderName(first.folder_name);
           setOutNo('');
-          setIsReserved(false);
         }
       } catch (e) {
         setErrorMsg('Failed to load initial form lists.');
@@ -137,7 +130,6 @@ export default function ComposeOutwardPage() {
       setRemarks(data.remarks || '');
       setCcList(data.ccList || []);
       setLinkedDocuments(data.linkedDocuments || []);
-      setIsReserved(Boolean(data.isReserved));
     } catch (e) {
       sessionStorage.removeItem(autosaveKey);
     }
@@ -166,7 +158,6 @@ export default function ComposeOutwardPage() {
       remarks,
       ccList,
       linkedDocuments,
-      isReserved
     }));
   }, [
     autosaveKey,
@@ -184,7 +175,6 @@ export default function ComposeOutwardPage() {
     remarks,
     ccList,
     linkedDocuments,
-    isReserved
   ]);
 
   // If in Modify mode, prefill details from outward register
@@ -239,30 +229,6 @@ export default function ComposeOutwardPage() {
     }
   }, [isModifyMode, folder_id, year, outward_no]);
 
-  // FR-055: Actually reserve the number (called when officer clicks "Get Number")
-  const reserveOutwardNo = async () => {
-    if (isModifyMode || isReserved) return;
-    try {
-      const params = { folder_id: folderId };
-      if (isTargetYearMode) {
-        params.target_year = targetYearVal;
-      }
-      const response = await axios.get('/api/outward/next-no', { params });
-      setOutNo(response.data.outward_no);
-      setIsReserved(true);
-      setErrorMsg('');
-      setSuccessMsg(`Outward No. ${response.data.outward_no} has been reserved for you.`);
-    } catch (e) {
-      console.error(e);
-      if (e.response && e.response.status === 400) {
-        setErrorMsg(e.response.data.detail);
-        setOutNo('');
-      } else {
-        setErrorMsg('Failed to reserve Outward number. Please try again.');
-      }
-    }
-  };
-
   // FR-034, FR-035: Bidirectional folder binds
   const handleFolderIdChange = (id) => {
     setFolderId(id);
@@ -298,7 +264,7 @@ export default function ComposeOutwardPage() {
   };
 
   // Reset form to blank state (FR-030)
-  const handleNew = () => {
+  const handleNew = (preserveMessages = false) => {
     setSubject('');
     setRemarks('');
     setTemplateType(templates.length > 0 ? templates[0].id.toString() : '');
@@ -307,9 +273,10 @@ export default function ComposeOutwardPage() {
     setCcList([]);
     setLinkedDocuments([]);
     setAttachmentFiles([]);
-    setSuccessMsg('');
-    setErrorMsg('');
-    setIsReserved(false);
+    if (!preserveMessages) {
+      setSuccessMsg('');
+      setErrorMsg('');
+    }
     setOutNo('');
     sessionStorage.removeItem(autosaveKey);
     if (folderTypes.length > 0) {
@@ -356,28 +323,8 @@ export default function ComposeOutwardPage() {
       return;
     }
     
-    // FR-055: If user hasn't clicked "Get Number" yet, reserve now before saving
-    let actualOutNo = outNo;
-    if (!isModifyMode && !isReserved) {
-      try {
-        const params = { folder_id: folderId };
-        if (isTargetYearMode) params.target_year = targetYearVal;
-        const reserveRes = await axios.get('/api/outward/next-no', { params });
-        actualOutNo = reserveRes.data.outward_no;
-        setOutNo(actualOutNo);
-        setIsReserved(true);
-      } catch (e) {
-        if (e.response && e.response.status === 400) {
-          setErrorMsg(e.response.data.detail);
-        } else {
-          setErrorMsg('Failed to reserve Outward number before saving.');
-        }
-        return;
-      }
-    }
-
     const payload = {
-      outward_no: actualOutNo,
+      outward_no: isModifyMode ? outNo : undefined,
       folder_id: folderId,
       issuing_date: dateVal,
       address_to: [addressTo],
@@ -406,9 +353,9 @@ export default function ComposeOutwardPage() {
             headers: { 'Content-Type': 'multipart/form-data' }
           });
         }
-        setSuccessMsg(`Draft document for Outward No. ${response.data.outward_no} generated successfully.`);
         // Reset form after successful save (FR-043)
-        handleNew();
+        handleNew(true);
+        setSuccessMsg('Draft saved successfully. Outward number will be assigned on dispatch.');
       }
     } catch (err) {
       setErrorMsg(err.response?.data?.detail || 'Failed to save document draft.');
@@ -449,7 +396,6 @@ export default function ComposeOutwardPage() {
                 value={targetYearVal}
                 onChange={(e) => {
                   setTargetYearVal(e.target.value);
-                  setIsReserved(false);
                   setOutNo('');
                 }}
                 sx={{ ml: 2, minWidth: 100 }}
@@ -462,40 +408,22 @@ export default function ComposeOutwardPage() {
             </Alert>
           )}
           <Grid container spacing={3}>
-            {/* Outward Number - Read Only */}
+            {/* Outward Number - Assigned on Dispatch */}
             <Grid item xs={12} sm={3}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TextField
-                  fullWidth
-                  label={isReserved || isModifyMode ? 'Outward No.' : 'Outward No.'}
-                  value={outNo || 'Pending...'}
-                  InputProps={{ readOnly: true }}
-                  disabled={isModifyMode}
-                  helperText={!isModifyMode && !isReserved ? 'Click "Get Number" to assign' : ''}
-                  sx={{
-                    '& .MuiInputBase-input': {
-                      fontWeight: 700,
-                      color: isReserved || isModifyMode ? '#2e7d32' : '#b0b0b0',
-                      fontSize: '1.1rem'
-                    }
-                  }}
-                />
-                {!isModifyMode && !isReserved && (
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={reserveOutwardNo}
-                    sx={{ 
-                      minWidth: 110, 
-                      height: 40, 
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    Get Number
-                  </Button>
-                )}
-              </Box>
+              <TextField
+                fullWidth
+                label="Outward No."
+                value={isModifyMode ? outNo : 'Assigned on Dispatch'}
+                InputProps={{ readOnly: true }}
+                helperText={isModifyMode ? '' : 'Official number is issued only when draft is dispatched.'}
+                sx={{
+                  '& .MuiInputBase-input': {
+                    fontWeight: 700,
+                    color: isModifyMode ? '#2e7d32' : '#5f6368',
+                    fontSize: '1rem'
+                  }
+                }}
+              />
             </Grid>
 
             {/* Date Picker (FR-033) */}
@@ -694,43 +622,13 @@ export default function ComposeOutwardPage() {
               </Box>
             </Grid>
 
-            {/* Linked Documents Autocomplete (FR-171) */}
+            {/* Linked Documents (FR-171) */}
             <Grid item xs={12}>
-              <Autocomplete
-                multiple
-                options={availableDocuments}
-                getOptionLabel={(option) => {
-                  if (typeof option === 'string') {
-                    const doc = availableDocuments.find(d => d.id === option);
-                    if (doc) return `${doc.type.toUpperCase()}: ${doc.subject} (${doc.id})`;
-                    return option;
-                  }
-                  return `${option.type.toUpperCase()}: ${option.subject} (${option.id})`;
-                }}
-                value={linkedDocuments.map(id => availableDocuments.find(d => d.id === id) || id)}
-                onChange={(event, newValue) => {
-                  setLinkedDocuments(newValue.map(v => typeof v === 'string' ? v : v.id));
-                }}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    variant="outlined"
-                    label="Link to existing Documents"
-                    placeholder="Search by ID, Subject, Name"
-                  />
-                )}
-                renderOption={(props, option) => (
-                  <li {...props}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="body2" fontWeight="bold">
-                        {option.type.toUpperCase()} - {option.id}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {option.subject} | {option.folder_name} | {option.date}
-                      </Typography>
-                    </Box>
-                  </li>
-                )}
+              <DocumentLinkPicker
+                value={linkedDocuments}
+                onChange={setLinkedDocuments}
+                folders={folderTypes}
+                excludeId={isModifyMode ? `outward:${folder_id}:${year}:${outward_no}` : ''}
               />
             </Grid>
 

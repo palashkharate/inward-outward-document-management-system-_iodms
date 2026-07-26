@@ -117,9 +117,12 @@ def seed_database():
             db.add(models.DocumentTemplate(
                 name="Standard Letter",
                 template_type="General",
-                file_path="Templates/standard_letter.docx",
+                file_path="Templates/standard_letter.doc",
                 uploaded_by="admin"
             ))
+        elif default_template.file_path == "Templates/standard_letter.docx":
+            print("Updating default Document Template to Word 97-2003 compatible .doc...")
+            default_template.file_path = "Templates/standard_letter.doc"
         db.commit()
         print("Database seeded successfully!")
 
@@ -131,11 +134,32 @@ def seed_database():
             os.makedirs(folder_path, exist_ok=True)
             print(f"Created: {folder_path}")
             
-        # Create a dummy template file
-        dummy_template = os.path.join(root_path, "Templates", "standard_letter.docx")
+        # Create a Word 97-2003 compatible RTF template saved as .doc.
+        dummy_template = os.path.join(root_path, "Templates", "standard_letter.doc")
         if not os.path.exists(dummy_template):
             with open(dummy_template, "w", encoding="utf-8") as f:
-                f.write("Dummy Standard Letter Template content. In a real system, this is a binary docx file.")
+                f.write(r"""{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+\fs24\b HAL AURDC, NASHIK - DEA\b0\par
+\par
+\b Reference:\b0 {{outward_reference}}\par
+\b Date:\b0 {{date}}\par
+\b Folder ID:\b0 {{folder_id}}\par
+\b Prepared By:\b0 {{prepared_by}}\par
+\par
+\b To\b0\par
+{{to}}\par
+\par
+\b CC:\b0 {{cc}}\par
+\par
+\b Subject:\b0 {{subject}}\par
+\par
+Dear Sir/Madam,\par
+\par
+[Place your letter body contents here...]\par
+\par
+\b Remarks:\b0 {{remarks}}\par
+}""")
 
         print("System setup is complete and ready.")
 

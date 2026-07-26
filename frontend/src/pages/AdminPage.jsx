@@ -1109,8 +1109,8 @@ export default function AdminPage() {
                     startIcon={<UploadFileIcon />}
                     fullWidth
                   >
-                    {templateFile ? templateFile.name : 'Select .docx File'}
-                    <input type="file" hidden accept=".docx" onChange={e => setTemplateFile(e.target.files[0])} />
+                    {templateFile ? templateFile.name : 'Select .doc / .docx / .rtf File'}
+                    <input type="file" hidden accept=".doc,.docx,.rtf" onChange={e => setTemplateFile(e.target.files[0])} />
                   </Button>
                 </Grid>
                 <Grid item xs={12} sm={2}>

@@ -1,8 +1,8 @@
 import datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from typing import Dict, List, Any
+from sqlalchemy import func, or_
+from typing import Dict, List, Any, Optional
 
 import models
 from database import get_db, get_iodms_settings
@@ -124,57 +124,121 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
     }
 
 @router.get("/search-documents")
-def search_documents(query: str, limit: int = 20, db: Session = Depends(get_db)):
+def search_documents(
+    query: str = "",
+    doc_type: str = "all",
+    year: Optional[int] = None,
+    number: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    party: Optional[str] = None,
+    subject: Optional[str] = None,
+    exclude_id: Optional[str] = None,
+    limit: int = 20,
+    db: Session = Depends(get_db)
+):
     """FR-171: Search existing Inward/Outward documents for linking."""
     q = query.strip().lower() if query else ""
+    type_filter = (doc_type or "all").lower()
+    number_q = number.strip().lower() if number else ""
+    folder_q = folder_id.strip() if folder_id else ""
+    party_q = party.strip().lower() if party else ""
+    subject_q = subject.strip().lower() if subject else ""
     results = []
 
-    # Search Inward
-    if q:
-        inward_records = db.query(models.InwardRegister).filter(
-            (func.lower(models.InwardRegister.inward_no).contains(q)) |
-            (func.lower(models.InwardRegister.subject).contains(q)) |
-            (func.lower(models.InwardRegister.received_from).contains(q))
-        ).order_by(models.InwardRegister.created_at.desc()).limit(limit).all()
-    else:
-        inward_records = db.query(models.InwardRegister).order_by(models.InwardRegister.created_at.desc()).limit(limit).all()
+    pending_delete_ids = {
+        pd.record_id
+        for pd in db.query(models.PendingDeletion).filter(models.PendingDeletion.status == "Pending").all()
+    }
 
-    for ir in inward_records:
-        results.append({
-            "id": f"inward:{ir.folder_id}:{ir.year}:{ir.inward_no}",
-            "type": "INWARD",
-            "subject": ir.subject,
-            "folder_name": ir.folder_id,
-            "date": ir.receiving_date.isoformat() if ir.receiving_date else "",
-            "title": ir.subject,
-            "label": f"INWARD - {ir.inward_no} - {ir.subject} (From: {ir.received_from})"
-        })
+    # Search Inward
+    if type_filter in ("all", "inward"):
+        inward_query = db.query(models.InwardRegister).filter(models.InwardRegister.status == "Active")
+        if year:
+            inward_query = inward_query.filter(models.InwardRegister.year == year)
+        if number_q:
+            inward_query = inward_query.filter(func.lower(models.InwardRegister.inward_no).contains(number_q))
+        if folder_q:
+            inward_query = inward_query.filter(models.InwardRegister.folder_id == folder_q)
+        if subject_q:
+            inward_query = inward_query.filter(func.lower(models.InwardRegister.subject).contains(subject_q))
+        if party_q:
+            inward_query = inward_query.filter(func.lower(models.InwardRegister.received_from).contains(party_q))
+        if q:
+            inward_query = inward_query.filter(or_(
+                func.lower(models.InwardRegister.inward_no).contains(q),
+                func.lower(models.InwardRegister.subject).contains(q),
+                func.lower(models.InwardRegister.received_from).contains(q),
+                func.lower(models.InwardRegister.folder_id).contains(q)
+            ))
+        inward_records = inward_query.order_by(models.InwardRegister.created_at.desc()).limit(limit * 2).all()
+
+        for ir in inward_records:
+            doc_id = f"inward:{ir.folder_id}:{ir.year}:{ir.inward_no}"
+            record_key = f"{ir.folder_id}:{ir.year}:{ir.inward_no}"
+            if doc_id == exclude_id or record_key in pending_delete_ids:
+                continue
+            subject_label = ir.subject or "No subject"
+            party_label = ir.received_from or "Unknown sender"
+            results.append({
+                "id": doc_id,
+                "type": "INWARD",
+                "number": ir.inward_no,
+                "year": ir.year,
+                "subject": ir.subject,
+                "party": party_label,
+                "folder_id": ir.folder_id,
+                "folder_name": ir.folder_id,
+                "date": ir.receiving_date.isoformat() if ir.receiving_date else "",
+                "title": subject_label,
+                "label": f"INWARD | {ir.year}/{ir.inward_no} | Folder: {ir.folder_id} | From: {party_label} | {subject_label}"
+            })
 
     # Search Outward
-    if q:
-        outward_records = db.query(models.OutwardRegister).filter(
-            (func.lower(models.OutwardRegister.outward_no).contains(q)) |
-            (func.lower(models.OutwardRegister.subject).contains(q))
-        ).order_by(models.OutwardRegister.created_at.desc()).limit(limit).all()
-    else:
-        outward_records = db.query(models.OutwardRegister).order_by(models.OutwardRegister.created_at.desc()).limit(limit).all()
+    if type_filter in ("all", "outward"):
+        outward_query = db.query(models.OutwardRegister).filter(models.OutwardRegister.status == "Active")
+        if year:
+            outward_query = outward_query.filter(models.OutwardRegister.year == year)
+        if number_q:
+            outward_query = outward_query.filter(func.lower(models.OutwardRegister.outward_no).contains(number_q))
+        if folder_q:
+            outward_query = outward_query.filter(models.OutwardRegister.folder_id == folder_q)
+        if subject_q:
+            outward_query = outward_query.filter(func.lower(models.OutwardRegister.subject).contains(subject_q))
+        if q:
+            outward_query = outward_query.filter(or_(
+                func.lower(models.OutwardRegister.outward_no).contains(q),
+                func.lower(models.OutwardRegister.subject).contains(q),
+                func.lower(models.OutwardRegister.folder_id).contains(q)
+            ))
+        outward_records = outward_query.order_by(models.OutwardRegister.created_at.desc()).limit(limit * 2).all()
 
-    for or_rec in outward_records:
-        address_names = []
-        for address_id in or_rec.address_to or []:
-            address = db.query(models.AddressBook).filter(models.AddressBook.address_id == address_id).first()
-            if address:
-                address_names.append(address.name)
-        address_label = ", ".join(address_names) if address_names else "No recipient"
-        results.append({
-            "id": f"outward:{or_rec.folder_id}:{or_rec.year}:{or_rec.outward_no}",
-            "type": "OUTWARD",
-            "subject": or_rec.subject,
-            "folder_name": or_rec.folder_id,
-            "date": or_rec.issuing_date.isoformat() if or_rec.issuing_date else "",
-            "title": or_rec.subject,
-            "label": f"OUTWARD - {or_rec.outward_no} - {or_rec.subject} (To: {address_label})"
-        })
+        for or_rec in outward_records:
+            doc_id = f"outward:{or_rec.folder_id}:{or_rec.year}:{or_rec.outward_no}"
+            record_key = f"{or_rec.folder_id}:{or_rec.year}:{or_rec.outward_no}"
+            if doc_id == exclude_id or record_key in pending_delete_ids:
+                continue
+            address_names = []
+            for address_id in or_rec.address_to or []:
+                address = db.query(models.AddressBook).filter(models.AddressBook.address_id == address_id).first()
+                if address:
+                    address_names.append(address.name)
+            address_label = ", ".join(address_names) if address_names else "No recipient"
+            if party_q and party_q not in address_label.lower():
+                continue
+            subject_label = or_rec.subject or "No subject"
+            results.append({
+                "id": doc_id,
+                "type": "OUTWARD",
+                "number": or_rec.outward_no,
+                "year": or_rec.year,
+                "subject": or_rec.subject,
+                "party": address_label,
+                "folder_id": or_rec.folder_id,
+                "folder_name": or_rec.folder_id,
+                "date": or_rec.issuing_date.isoformat() if or_rec.issuing_date else "",
+                "title": subject_label,
+                "label": f"OUTWARD | {or_rec.year}/{or_rec.outward_no} | Folder: {or_rec.folder_id} | To: {address_label} | {subject_label}"
+            })
 
     # Sort results to put exact matches higher, and limit the total list
     return sorted(results, key=lambda x: (not x['id'].lower().startswith(q), x['id']))[:limit]

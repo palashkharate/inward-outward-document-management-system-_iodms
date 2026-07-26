@@ -42,13 +42,14 @@ def get_effective_year() -> int:
 
 # FR-060, FR-061: Generate next Inward Number
 def get_next_inward_no(folder_id: str, year: int, db: Session) -> str:
-    """Computes the next inward sequential number for a specific Folder ID and Year.
+    """Computes the next inward sequential number for the whole office year.
     
     Implements:
-    - FR-061: Resets to 001 yearly per Folder ID, zero-padded up to 999, then 4+ digits.
+    - FR-061: Resets to 001 yearly, zero-padded up to 999, then 4+ digits.
+      Folder ID controls storage/classification only; it does not create a separate
+      inward number sequence.
     """
     records = db.query(models.InwardRegister.inward_no).filter(
-        models.InwardRegister.folder_id == folder_id,
         models.InwardRegister.year == year
     ).all()
     
@@ -121,12 +122,15 @@ def get_next_no(
         
         if not pending_del:
             year = target_year if target_year else get_effective_year()
-            if existing_reserved.folder_id == folder_id and existing_reserved.year == year:
+            if existing_reserved.year == year:
+                if existing_reserved.folder_id != folder_id:
+                    existing_reserved.folder_id = folder_id
+                    db.commit()
                 return {"inward_no": existing_reserved.inward_no, "year": existing_reserved.year, "reused": True}
             else:
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"You already have an unused reserved Inward Number for folder '{existing_reserved.folder_id}' (Year {existing_reserved.year}). Please go to the Inward Register to complete or delete it before reserving a new number in a different folder."
+                    detail=f"You already have an unused reserved Inward Number for Year {existing_reserved.year}. Please complete or delete it before reserving a number for another year."
                 )
 
     year = target_year if target_year else get_effective_year()
@@ -190,10 +194,10 @@ def log_inward(
 
     # Find the reserved record
     reserved_record = db.query(models.InwardRegister).filter(
-        models.InwardRegister.folder_id == folder_id,
         models.InwardRegister.year == year,
         models.InwardRegister.inward_no == inward_no,
-        models.InwardRegister.status == "Reserved"
+        models.InwardRegister.status == "Reserved",
+        models.InwardRegister.actioned_by == actioned_by
     ).first()
 
     if not reserved_record:
@@ -257,7 +261,7 @@ def log_inward(
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=f"Failed to save file on server: {str(e)}")
 
-
+    reserved_record.folder_id = folder_id
     reserved_record.receiving_date = rec_date
     reserved_record.inward_letter_no = inward_letter_no
     reserved_record.inward_date = let_date
