@@ -6,6 +6,29 @@ and **why** the change was made (linking back to FR IDs or NFR IDs where applica
 
 ---
 
+## [2026-08-08] Phase 6 Direct LAN Microsoft Word Editing
+
+### Added / Modified
+| File | Change | FR/NFR |
+|---|---|---|
+| `backend/database.py` | Added `iodms_lan_share_path` setting and helper for client-visible LAN share paths. | FR-052, EIR-003, EIR-004 |
+| `backend/routers/admin.py` | Persisted LAN share path through Admin system settings. | FR-140, EIR-003 |
+| `backend/routers/outward.py` | Draft list, detail, and lock responses now return `lan_shared_path` and `word_open_uri` for direct Word editing. Lock endpoint supports body-less authenticated calls. | FR-052, EIR-004 |
+| `frontend/src/pages/AdminPage.jsx` | Added LAN Shared IODMS Path field to System Settings. | FR-140, EIR-003 |
+| `frontend/src/pages/DraftsDispatchPage.jsx` | Reworked draft edit action to lock the draft, show the UNC path, open Word via protocol link, copy path, release lock, or use download/re-upload fallback. | FR-051, FR-052, FR-053, EIR-004 |
+| `backend/test_api.py` | Added automated assertion for LAN path and Word URI generation. | FR-052 |
+| `docs/test_cases.md` | Added manual validation cases for direct LAN Word edit, fallback re-upload, missing share setting, and Admin share path persistence. | FR-052, FR-140, EIR-003, EIR-004 |
+| `docs/technical_design.md` | Documented server root path vs client LAN share path behavior. | EIR-003, EIR-004 |
+
+### Decisions Made
+- The database continues storing relative paths only. The backend computes client-visible UNC paths at response time from Admin settings.
+- Direct Word editing is locked by the application, but lock release remains a deliberate user/Admin action because browsers cannot reliably detect when Microsoft Word exits after opening a LAN file.
+
+### Status
+- Phase 6 code and documentation are implemented.
+
+---
+
 ## [2026-06-21] Project Initialisation
 
 ### Added

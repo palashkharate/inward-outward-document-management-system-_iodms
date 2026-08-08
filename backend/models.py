@@ -142,6 +142,7 @@ class OutwardRegister(Base):
     template_type = Column(String(100), nullable=False)  # 'Fax_With_GM_Sig', 'Fax_Without_GM_Sig', 'Internal_Letter'
     linked_documents = Column(ARRAY(String(255)), default=[]) # FR-171
     attachment_paths = Column(ARRAY(String(500)), default=[]) # FR-170b
+    document_body = Column(JSONB, nullable=True) # FR-052
     status = Column(String(50), nullable=False, default="Active")  # 'Active', 'Not Active', 'Permanently Deleted'
     # FR-160: Timestamps
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
@@ -161,6 +162,7 @@ class DraftFile(Base):
     file_path = Column(String(500), nullable=False)
     attachment_paths = Column(ARRAY(String(500)), default=[]) # FR-170b
     linked_documents = Column(ARRAY(String(255)), default=[]) # FR-171
+    document_body = Column(JSONB, nullable=True) # FR-052
     outward_no = Column(String(10), nullable=False)
     folder_id = Column(String(50), ForeignKey("folder_types.folder_id", onupdate="CASCADE"))
     issuing_date = Column(Date, nullable=False)

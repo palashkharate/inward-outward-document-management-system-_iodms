@@ -40,6 +40,9 @@ This document defines the test suite for validating all 100 Functional Requireme
 | **TC-050** | FR-050 | Drafts | Drafts table | Click "Drafts & Dispatch". | Displays table showing reserved Outward No., Subject, Prepared By, etc. |
 | **TC-051** | FR-051 | Drafts | Row actions | Click arrow to expand a draft row. | Reveals "Open / Edit in Word", "Dispatch", and "Discard Draft" buttons. |
 | **TC-052** | FR-052 | Drafts | Edit locking | User A locks draft. User B attempts to edit same draft. | User B gets error: "This draft is currently being edited by [User A]". |
+| **TC-052A** | FR-052 / EIR-003 / EIR-004 | Drafts | Direct LAN Word edit | Admin sets LAN Shared IODMS Path to `\\Server\IODMS_DATA`. User clicks "Open / Edit in Word" on a draft, clicks "Open in Word", edits, saves, closes Word, then clicks "Release Lock". | Draft opens from the shared path in Microsoft Word. Saved changes remain in the shared draft file and the lock is released only after user action. |
+| **TC-052B** | FR-052 / EIR-004 | Drafts | Download fallback | User clicks "Open / Edit in Word", downloads the draft, edits locally, selects the edited file in the same dialog, and clicks "Upload Re-edited File". | Edited file replaces the draft file on the server and the lock is released. |
+| **TC-052C** | FR-052 / EIR-003 | Drafts | Missing LAN share setting | Clear LAN Shared IODMS Path in Admin settings, then click "Open / Edit in Word" on a draft. | Lock dialog shows that the LAN shared path is not configured. "Open in Word" and "Copy Path" are disabled, while download/re-upload fallback remains available. |
 | **TC-053** | FR-053 | Drafts | Release lock | User A clicks "Release Lock & Save" or Admin clicks "Admin: Release Lock". | Draft is unlocked. User B can now edit it. |
 | **TC-054** | FR-054 | Drafts | Dispatch document | Click "Dispatch" on draft. | Renames document to next sequential number (e.g. 004.doc), moves it to Outward/2026/Su-30/, adds to Outward Register. |
 | **TC-056** | FR-056 | Drafts | Discard draft | Click "Discard Draft" on draft. | Creates deletion request. Draft is hidden from drafts register immediately. |
@@ -63,6 +66,7 @@ This document defines the test suite for validating all 100 Functional Requireme
 | **TC-125** | FR-125 | Admin | Profile grid | Go to Admin tab -> Profile Edit Approvals. | Lists profile change requests. |
 | **TC-126** | FR-126 | Admin | Approve profile | Click Approve on profile edit. | User's name and DOB are updated in the users table. |
 | **TC-140** | FR-140 | Admin | Change path | Go to Settings tab, change root path to `D:/HAL_RECORDS`, click Save. Log a document. | Document is saved inside `D:/HAL_RECORDS/Inward/...`. |
+| **TC-140A** | FR-140 / EIR-003 | Admin | Configure LAN share path | Go to Admin -> System Settings, enter `\\Server\IODMS_DATA` in LAN Shared IODMS Path, click Save, reload settings. | The LAN share path is saved and displayed again after reload. Draft edit dialogs use this share path. |
 | **TC-141** | FR-141 | Admin | Cutover override | Set Cutover Override Date to `2026-01-15`. Log inward on Jan 10. | Inward number is logged under Year `2025` instead of `2026`. |
 | **TC-142** | FR-142 | Admin | DBeaver info | Click "Open in DBeaver" button. | Modal opens displaying connection configuration guidelines. |
 | **TC-150** | FR-150 | Profile | View details | Click "My Profile". | Details matching User ID, PB No., Name, DOB, Role are shown. |

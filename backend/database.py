@@ -16,8 +16,11 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Default configuration settings file path
-SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+# FR-140: Store settings in the Docker-mounted config folder when one is provided.
+SETTINGS_FILE = os.getenv(
+    "IODMS_SETTINGS_FILE",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+)
 
 # FR-140: IODMS Root Path
 def get_iodms_settings():
@@ -30,6 +33,7 @@ def get_iodms_settings():
                              os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "IODMS_DATA")))
     default_settings = {
         "iodms_root_path": default_root,
+        "iodms_lan_share_path": os.getenv("IODMS_LAN_SHARE_PATH", ""),
         "cutover_override_date": None  # FR-141
     }
     if not os.path.exists(SETTINGS_FILE):
@@ -54,6 +58,7 @@ def save_iodms_settings(settings):
     This function implements FR-140 by saving the newly updated path or settings.
     """
     try:
+        os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
         with open(SETTINGS_FILE, "w") as f:
             json.dump(settings, f, indent=4)
         return True
@@ -69,6 +74,12 @@ def get_iodms_root_path():
     """
     settings = get_iodms_settings()
     return settings["iodms_root_path"]
+
+# FR-052: LAN share path used by officer PCs for direct Word editing.
+def get_iodms_lan_share_path():
+    """Gets the client-visible UNC path for the shared IODMS folder."""
+    settings = get_iodms_settings()
+    return (settings.get("iodms_lan_share_path") or "").strip()
 
 # FR-013: No session timeout is enforced, but database connections are leased per request.
 def get_db():

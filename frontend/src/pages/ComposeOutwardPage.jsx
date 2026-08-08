@@ -44,6 +44,9 @@ export default function ComposeOutwardPage() {
   const searchParams = new URLSearchParams(location.search);
   const isTargetYearMode = searchParams.get('target_year') === 'true';
 
+  const { draft_id } = useParams();
+  const isDraftMode = !!draft_id;
+
   // Form Fields
   const [targetYearVal, setTargetYearVal] = useState(new Date().getFullYear() - 1);
   const [outNo, setOutNo] = useState('');
@@ -157,7 +160,7 @@ export default function ComposeOutwardPage() {
       addressTo,
       remarks,
       ccList,
-      linkedDocuments,
+      linkedDocuments
     }));
   }, [
     autosaveKey,
@@ -174,7 +177,7 @@ export default function ComposeOutwardPage() {
     addressTo,
     remarks,
     ccList,
-    linkedDocuments,
+    linkedDocuments
   ]);
 
   // If in Modify mode, prefill details from outward register
@@ -228,6 +231,42 @@ export default function ComposeOutwardPage() {
       fetchRecord();
     }
   }, [isModifyMode, folder_id, year, outward_no]);
+
+  // If in Draft mode, prefill details from drafts endpoint
+  useEffect(() => {
+    if (isDraftMode && draft_id) {
+      const fetchDraft = async () => {
+        try {
+          const response = await axios.get(`/api/outward/drafts/${draft_id}`);
+          const match = response.data;
+          if (match) {
+            setFolderId(match.folder_id);
+            setSubject(match.subject || '');
+            setPreparedBy(match.prepared_by || '');
+            setRemarks(match.remarks || '');
+            setTemplateType(match.template_type || '');
+            setAddressTo(match.address_to.length > 0 ? match.address_to[0] : '');
+            setCcList(match.cc_to || []);
+            setLinkedDocuments(match.linked_documents || []);
+            
+            // Reconstruct contacts
+            const fetchedContacts = await axios.get('/api/admin/address-book?limit=1000');
+            const allc = fetchedContacts.data.results;
+            const primaryContactId = match.address_to.length > 0 ? match.address_to[0] : null;
+            if (primaryContactId) {
+              const primaryContact = allc.find(c => c.address_id === primaryContactId);
+              if (primaryContact) {
+                setAddressGroup(primaryContact.address_group);
+              }
+            }
+          }
+        } catch (err) {
+          setErrorMsg('Error prefilling draft details.');
+        }
+      };
+      fetchDraft();
+    }
+  }, [isDraftMode, draft_id]);
 
   // FR-034, FR-035: Bidirectional folder binds
   const handleFolderIdChange = (id) => {
@@ -343,6 +382,17 @@ export default function ComposeOutwardPage() {
         // FR-044: Save updates in Modify Mode
         await axios.put(`/api/outward/modify/${folder_id}/${year}/${outward_no}`, payload);
         setSuccessMsg(`Outward No. ${outward_no} modified successfully.`);
+      } else if (isDraftMode) {
+        // FR-044, FR-052: Save Draft Mode Update
+        await axios.put(`/api/outward/drafts/${draft_id}`, payload);
+        if (attachmentFiles.length > 0) {
+          const fileData = new FormData();
+          attachmentFiles.forEach(file => fileData.append('files', file));
+          await axios.post(`/api/outward/drafts/${draft_id}/attachments`, fileData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+        }
+        setSuccessMsg(`Draft updated successfully.`);
       } else {
         // FR-042: Save Draft
         const response = await axios.post('/api/outward/draft', payload);
@@ -643,6 +693,8 @@ export default function ComposeOutwardPage() {
                 onChange={(e) => setRemarks(e.target.value)}
               />
             </Grid>
+
+            {/* Online Document Editor moved to dedicated Draft Editor */}
 
             {/* Supporting Uploads (FR-170b) */}
             <Grid item xs={12}>

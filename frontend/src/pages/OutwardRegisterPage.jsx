@@ -34,12 +34,15 @@ import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import DownloadIcon from '@mui/icons-material/Download';
 import { useAuth } from '../App.jsx';
 import EditHistoryModal from '../components/EditHistoryModal.jsx';
 import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
 import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
 import VisualFamilyTree from '../components/VisualFamilyTree.jsx';
-function OutwardRow({ row, onAction, onViewFile, setTreeDocId }) {
+
+function OutwardRow({ row, onAction, onViewFile, onDownloadFile, setTreeDocId }) {
   const [open, setOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const navigate = useNavigate();
@@ -107,25 +110,36 @@ function OutwardRow({ row, onAction, onViewFile, setTreeDocId }) {
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
                     {row.attachment_paths && row.attachment_paths.length > 0 ? (
                       row.attachment_paths.map((path, idx) => (
-                        <Chip
-                          key={idx}
-                          label={path.split('/').pop()}
-                          size="small"
-                          color="primary"
-                          icon={<VisibilityIcon />}
-                          onClick={() => onViewFile(path)}
-                          clickable
-                        />
+                        <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 1, pr: 0.5, border: '1px solid rgba(0,0,0,0.05)' }}>
+                          <Chip
+                            label={path.split('/').pop()}
+                            size="small"
+                            color="primary"
+                            icon={<VisibilityIcon />}
+                            onClick={() => onViewFile(path)}
+                            clickable
+                            sx={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+                          />
+                          <IconButton size="small" onClick={() => onDownloadFile(path)} aria-label="download">
+                            <DownloadIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       ))
                     ) : row.document_path ? (
-                        <Chip
-                          label={row.document_path.split('/').pop()}
-                          size="small"
-                          color="primary"
-                          icon={<VisibilityIcon />}
-                          onClick={() => onViewFile(row.document_path)}
-                          clickable
-                        />
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 1, pr: 0.5, border: '1px solid rgba(0,0,0,0.05)' }}>
+                          <Chip
+                            label={row.document_path.split('/').pop()}
+                            size="small"
+                            color="primary"
+                            icon={<VisibilityIcon />}
+                            onClick={() => onViewFile(row.document_path)}
+                            clickable
+                            sx={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+                          />
+                          <IconButton size="small" onClick={() => onDownloadFile(row.document_path)} aria-label="download">
+                            <DownloadIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                     ) : (
                       <Typography variant="body2" color="text.secondary">No attachments</Typography>
                     )}
@@ -154,6 +168,17 @@ function OutwardRow({ row, onAction, onViewFile, setTreeDocId }) {
               </Grid>
 
               <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                {/* Upload Signed Copy (FR-170b) */}
+                <Button
+                  variant="outlined"
+                  color="success"
+                  startIcon={<FileUploadIcon />}
+                  onClick={() => handleAction('upload', row)}
+                  disabled={row.is_pending_deletion}
+                >
+                  Upload Signed Copy / Attachment
+                </Button>
+
                 {/* Edit Details (FR-094) */}
                 <Button
                   variant="outlined"
@@ -164,7 +189,6 @@ function OutwardRow({ row, onAction, onViewFile, setTreeDocId }) {
                 >
                   Edit Details
                 </Button>
-
 
                 {/* Delete (FR-095) */}
                 <Button
@@ -230,6 +254,10 @@ export default function OutwardRegisterPage() {
   
   // Visual Family Tree state
   const [treeDocId, setTreeDocId] = useState(null);
+
+  // Upload Attachments state
+  const [attachmentUploadOpen, setAttachmentUploadOpen] = useState(false);
+  const [attachmentUploadFiles, setAttachmentUploadFiles] = useState([]);
 
   // Document Viewer state
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -301,9 +329,32 @@ export default function OutwardRegisterPage() {
   }, [searchFolder, searchPreparedBy, searchAddressTo, searchSubject, searchStatus, searchDateFrom, searchDateTo]);
 
   const handleAction = (action, row) => {
+    setActiveRow(row);
     if (action === 'delete') {
-      setActiveRow(row);
       setDeleteConfirmOpen(true);
+    } else if (action === 'upload') {
+      setAttachmentUploadFiles([]);
+      setAttachmentUploadOpen(true);
+    }
+  };
+
+  const uploadMoreAttachments = async () => {
+    if (!activeRow || attachmentUploadFiles.length === 0) {
+      setErrorMsg('Please select at least one file to upload.');
+      return;
+    }
+    const formData = new FormData();
+    attachmentUploadFiles.forEach(file => formData.append('files', file));
+    try {
+      await axios.post(`/api/outward/${activeRow.folder_id}/${activeRow.year}/${activeRow.outward_no}/attachments`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccessMsg('Signed copies / attachments uploaded successfully.');
+      setAttachmentUploadOpen(false);
+      setAttachmentUploadFiles([]);
+      fetchRegister();
+    } catch (err) {
+      setErrorMsg(err.response?.data?.detail || 'Failed to upload attachments.');
     }
   };
 
@@ -328,6 +379,18 @@ export default function OutwardRegisterPage() {
     setViewerName(filename);
     setIsPdf(isPdfFile);
     setViewerOpen(true);
+  };
+
+  const handleDownloadFile = (path) => {
+    if (!path) return;
+    const filename = path.split('\\').pop().split('/').pop();
+    const url = `/api/outward/view-document?path=${encodeURIComponent(path)}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
@@ -437,7 +500,15 @@ export default function OutwardRegisterPage() {
               </TableRow>
             ) : (
               results.map((row) => (
-                <OutwardRow key={`${row.folder_id}-${row.year}-${row.outward_no}`} row={row} onAction={handleAction} user={user} onViewFile={handleViewFile} setTreeDocId={setTreeDocId} />
+                <OutwardRow 
+                  key={`${row.folder_id}-${row.year}-${row.outward_no}`} 
+                  row={row} 
+                  onAction={handleAction} 
+                  user={user} 
+                  onViewFile={handleViewFile} 
+                  onDownloadFile={handleDownloadFile}
+                  setTreeDocId={setTreeDocId} 
+                />
               ))
             )}
           </TableBody>
@@ -466,6 +537,37 @@ export default function OutwardRegisterPage() {
         <DialogActions>
           <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
           <Button onClick={executeDelete} color="error" variant="contained">Request Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* FR-170b: Upload Signed Copy / Additional Attachments */}
+      <Dialog open={attachmentUploadOpen} onClose={() => setAttachmentUploadOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload Signed Copy / Attachment</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Add a signed copy or any other supporting document to this dispatched record.
+          </Typography>
+          <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
+            Select Files
+            <input
+              type="file"
+              hidden
+              multiple
+              accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+              onChange={(e) => setAttachmentUploadFiles(Array.from(e.target.files || []))}
+            />
+          </Button>
+          <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {attachmentUploadFiles.map((file) => (
+              <Chip key={`${file.name}-${file.size}`} label={file.name} />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAttachmentUploadOpen(false)}>Cancel</Button>
+          <Button onClick={uploadMoreAttachments} variant="contained" disabled={attachmentUploadFiles.length === 0}>
+            Upload Files
+          </Button>
         </DialogActions>
       </Dialog>
 

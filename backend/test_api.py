@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 import models
 from database import Base, get_db, DATABASE_URL
 from main import app
+from routers.outward import build_lan_document_open_info
 
 # Let's explain: This file runs automated tests against our API.
 # It makes sure that our numbering systems, user logins, and administrative
@@ -252,6 +253,41 @@ def test_draft_locking(client, db):
     )
     assert response.status_code == 400
     assert "currently being edited" in response.json()["detail"]
+
+
+# FR-052, EIR-003, EIR-004: Test LAN path details for direct Word editing
+def test_lan_word_open_info(monkeypatch):
+    monkeypatch.setattr("routers.outward.get_iodms_lan_share_path", lambda: r"\\Server\IODMS_DATA")
+
+    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc")
+
+    assert open_info["lan_shared_path"] == r"\\Server\IODMS_DATA\Drafts\2026\Su-30\draft-admin.doc"
+    assert open_info["lan_file_uri"] == "file://Server/IODMS_DATA/Drafts/2026/Su-30/draft-admin.doc"
+    assert open_info["word_launcher_uri"] == "iodms-word://open?path=%5C%5CServer%5CIODMS_DATA%5CDrafts%5C2026%5CSu-30%5Cdraft-admin.doc"
+    assert open_info["word_open_uri"].startswith("ms-word:ofe|u|file://")
+    assert "Drafts/2026/Su-30/draft-admin.doc" in open_info["word_open_uri"]
+
+
+def test_lan_word_open_info_without_share(monkeypatch):
+    monkeypatch.setattr("routers.outward.get_iodms_lan_share_path", lambda: "")
+
+    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc")
+
+    assert open_info == {
+        "lan_shared_path": None,
+        "lan_file_uri": None,
+        "word_launcher_uri": None,
+        "word_open_uri": None,
+    }
+
+
+def test_local_word_open_info(monkeypatch):
+    monkeypatch.setattr("routers.outward.get_iodms_lan_share_path", lambda: r"C:\IODMS_DATA")
+
+    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc")
+
+    assert open_info["lan_shared_path"] == r"C:\IODMS_DATA\Drafts\2026\Su-30\draft-admin.doc"
+    assert open_info["lan_file_uri"] == "file:///C:/IODMS_DATA/Drafts/2026/Su-30/draft-admin.doc"
 
 
 # FR-084: Test Soft Delete Request creation

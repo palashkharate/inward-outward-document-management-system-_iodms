@@ -3,6 +3,7 @@ import os
 import shutil
 import json
 import uuid
+from urllib.parse import quote
 from .link_utils import sync_bidirectional_links
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 import models
-from database import get_db, get_iodms_root_path, get_iodms_settings
+from database import get_db, get_iodms_root_path, get_iodms_lan_share_path
 from routers.inward import get_effective_year
 import filesystem_utils
 from auth_utils import get_current_user
@@ -32,11 +33,33 @@ class DraftCreate(BaseModel):
     template_type: str
     target_year: Optional[int] = None
     linked_documents: Optional[List[str]] = []
+    document_body: Optional[dict] = None
 
 class DraftLockAction(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
 
 # --- Helper functions ---
+
+SUPPORTED_TEMPLATE_EXTENSIONS = {".doc", ".docx", ".rtf", ".txt"}
+
+
+def get_selected_template(template_id, db: Session):
+    """Returns the selected template when the submitted value is a template ID."""
+    try:
+        return db.query(models.DocumentTemplate).filter(
+            models.DocumentTemplate.id == int(template_id)
+        ).first()
+    except (TypeError, ValueError):
+        return None
+
+
+def get_template_document_extension(template_id, db: Session) -> str:
+    """Uses the template's actual format so copied templates stay valid files."""
+    template = get_selected_template(template_id, db)
+    if not template:
+        return ".doc"
+    extension = os.path.splitext(template.file_path)[1].lower()
+    return extension if extension in SUPPORTED_TEMPLATE_EXTENSIONS else ".doc"
 
 def check_draft_locks(db: Session):
     """Auto-expires locks older than 30 minutes."""
@@ -46,6 +69,32 @@ def check_draft_locks(db: Session):
         models.DraftFile.locked_at < thirty_mins_ago
     ).update({"is_locked": False, "locked_by": None, "locked_at": None})
     db.commit()
+
+# FR-052: Build the direct LAN path officers open in Microsoft Word.
+def build_lan_document_open_info(relative_path: str) -> dict:
+    lan_root = get_iodms_lan_share_path()
+    if not lan_root or not relative_path:
+        return {
+            "lan_shared_path": None,
+            "lan_file_uri": None,
+            "word_launcher_uri": None,
+            "word_open_uri": None
+        }
+
+    normalized_relative = str(relative_path).strip().replace("/", "\\").lstrip("\\")
+    lan_shared_path = lan_root.rstrip("\\/") + "\\" + normalized_relative
+    file_url_path = quote(lan_shared_path.replace("\\", "/").lstrip("/"), safe="/:")
+    lan_file_uri = (
+        f"file://{file_url_path}"
+        if lan_shared_path.startswith("\\\\")
+        else f"file:///{file_url_path}"
+    )
+    return {
+        "lan_shared_path": lan_shared_path,
+        "lan_file_uri": lan_file_uri,
+        "word_launcher_uri": f"iodms-word://open?path={quote(lan_shared_path, safe='')}",
+        "word_open_uri": f"ms-word:ofe|u|{lan_file_uri}"
+    }
 
 def log_edit(db: Session, record_type: str, record_id: str, action: str, user_id: str, changes: dict = None):
     """Helper to add an entry to the EditLog."""
@@ -263,11 +312,9 @@ def create_draft_document(filepath: str, data: dict, db: Session):
     """
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     
-    template_id = data.get('template_type')
-    try:
-        template = db.query(models.DocumentTemplate).filter(models.DocumentTemplate.id == int(template_id)).first()
-    except:
-        template = None
+    template = get_selected_template(data.get("template_type"), db)
+
+    document_body = data.get("document_body")
 
     if template:
         src_path = os.path.join(get_iodms_root_path(), template.file_path)
@@ -277,17 +324,109 @@ def create_draft_document(filepath: str, data: dict, db: Session):
                 if src_ext == ".docx" and filepath.lower().endswith(".docx"):
                     shutil.copyfile(src_path, filepath)
                     replace_docx_placeholders(filepath, build_template_replacements(data, db))
+                    
+                    if document_body and "blocks" in document_body:
+                        import docx
+                        doc = docx.Document(filepath)
+                        # Append editor blocks to the doc
+                        for block in document_body["blocks"]:
+                            if block["type"] == "paragraph":
+                                doc.add_paragraph(block["data"].get("text", ""))
+                            elif block["type"] == "header":
+                                doc.add_heading(block["data"].get("text", ""), level=block["data"].get("level", 1))
+                            elif block["type"] == "list":
+                                style = 'List Number' if block["data"].get("style") == "ordered" else 'List Bullet'
+                                for item in block["data"].get("items", []):
+                                    doc.add_paragraph(item, style=style)
+                        doc.save(filepath)
                     return
                 if src_ext in [".doc", ".rtf", ".txt"]:
                     shutil.copyfile(src_path, filepath)
                     if is_rtf_or_text_word_file(filepath):
                         replace_text_placeholders(filepath, build_template_replacements(data, db))
+                    # Fallback text appending for non-docx
+                    if document_body and "blocks" in document_body:
+                        with open(filepath, "a", encoding="utf-8") as f:
+                            f.write("\n\n")
+                            for block in document_body["blocks"]:
+                                if block["type"] in ["paragraph", "header"]:
+                                    f.write(block["data"].get("text", "") + "\n\n")
+                                elif block["type"] == "list":
+                                    for item in block["data"].get("items", []):
+                                        f.write(f"- {item}\n")
+                                    f.write("\n")
                     return
-            except Exception:
+            except Exception as e:
+                print(f"Template parsing failed: {e}")
                 pass
             
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(create_rtf_document_content(data, db))
+    # If no template or copying failed, generate basic file
+    if document_body and "blocks" in document_body:
+        import docx
+        doc = docx.Document()
+        doc.add_heading(data.get("subject", "Document"), 0)
+        for block in document_body["blocks"]:
+            if block["type"] == "paragraph":
+                doc.add_paragraph(block["data"].get("text", ""))
+            elif block["type"] == "header":
+                doc.add_heading(block["data"].get("text", ""), level=block["data"].get("level", 1))
+            elif block["type"] == "list":
+                style = 'List Number' if block["data"].get("style") == "ordered" else 'List Bullet'
+                for item in block["data"].get("items", []):
+                    doc.add_paragraph(item, style=style)
+        doc.save(filepath)
+    else:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(create_rtf_document_content(data, db))
+
+
+def is_blank_fallback_draft(filepath: str) -> bool:
+    """Recognizes the old generic file produced when a DOCX template was skipped."""
+    try:
+        with open(filepath, "rb") as file_handle:
+            contents = file_handle.read()
+        return b"[Place your letter body contents here...]" in contents
+    except OSError:
+        return False
+
+
+def rebuild_blank_draft_from_template(draft, db: Session) -> bool:
+    """Repairs only known blank legacy fallbacks; user-edited files are never replaced."""
+    template_extension = get_template_document_extension(draft.template_type, db)
+    current_extension = os.path.splitext(draft.file_path)[1].lower()
+    if current_extension == template_extension:
+        return False
+
+    old_full_path = os.path.join(get_iodms_root_path(), draft.file_path)
+    if not is_blank_fallback_draft(old_full_path):
+        return False
+
+    new_relative_path = os.path.splitext(draft.file_path)[0] + template_extension
+    new_full_path = os.path.join(get_iodms_root_path(), new_relative_path)
+    draft_data = {
+        "outward_no": draft.outward_no,
+        "folder_id": draft.folder_id,
+        "issuing_date": draft.issuing_date.isoformat(),
+        "address_to": draft.address_to or [],
+        "cc_to": draft.cc_to or [],
+        "subject": draft.subject,
+        "remarks": draft.remarks,
+        "prepared_by": draft.prepared_by,
+        "actioned_by": draft.actioned_by,
+        "template_type": draft.template_type,
+        "linked_documents": draft.linked_documents or [],
+        "document_body": draft.document_body,
+        "year": draft.year,
+    }
+    create_draft_document(new_full_path, draft_data, db)
+    draft.file_path = new_relative_path.replace("\\", "/")
+    draft.attachment_paths = [
+        draft.file_path if path == os.path.splitext(new_relative_path)[0] + current_extension else path
+        for path in (draft.attachment_paths or [])
+    ]
+    if os.path.exists(old_full_path):
+        os.remove(old_full_path)
+    return True
 
 
 # --- Endpoints ---
@@ -317,19 +456,21 @@ def save_draft(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Saves outward details as a draft and generates a .doc file on disk.
+    """Saves outward details as a draft using the selected template's file format.
     
     Implements:
-    - FR-042: Generates a draft file under IODMS/Drafts/{Year}/{FolderID}/draft-...doc
+    - FR-042: Generates a draft file under IODMS/Drafts/{Year}/{FolderID}/draft-...<template extension>
     - FR-144: Support target_year override
     """
     year = payload.target_year if payload.target_year else get_effective_year()
     actor_id = current_user.get("user_id")
 
-    # Filename format: draft-{UserID}-{YYYYMMDD}-{HHMMSS}.doc
+    # Preserve the selected template's extension; copying a DOCX to a .doc
+    # filename caused Word to receive a generic fallback instead of the template.
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     draft_marker = "DRAFT"
-    filename = f"draft-{actor_id}-{timestamp}.doc"
+    document_extension = get_template_document_extension(payload.template_type, db)
+    filename = f"draft-{actor_id}-{timestamp}{document_extension}"
     
     relative_folder, full_folder = filesystem_utils.ensure_folder_path(get_iodms_root_path(), "Drafts", year, payload.folder_id)
     relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
@@ -362,6 +503,7 @@ def save_draft(
         template_type=payload.template_type,
         linked_documents=payload.linked_documents,
         attachment_paths=[relative_path],
+        document_body=payload.document_body,
         year=year
     )
     db.add(draft_record)
@@ -370,6 +512,56 @@ def save_draft(
 
     db.commit()
     return {"message": "Draft created successfully. Outward number will be assigned on dispatch.", "draft_id": draft_record.draft_id, "outward_no": None, "success": True}
+
+
+# FR-044, FR-052: Update Draft
+@router.put("/drafts/{draft_id}")
+def update_draft(
+    draft_id: int,
+    payload: DraftCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Updates an existing draft document."""
+    draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    ensure_draft_not_pending_deletion(db, draft_id)
+    
+    actor_id = current_user.get("user_id")
+
+    iss_date = parse_document_date(payload.issuing_date)
+
+    draft.issuing_date = iss_date
+    draft.folder_id = payload.folder_id
+    draft.address_to = payload.address_to
+    draft.cc_to = payload.cc_to
+    draft.subject = payload.subject
+    draft.remarks = payload.remarks
+    draft.prepared_by = payload.prepared_by
+    draft.actioned_by = actor_id
+    draft.template_type = payload.template_type
+    draft.linked_documents = payload.linked_documents
+    if payload.document_body is not None:
+        draft.document_body = payload.document_body
+
+    # Recreate the file on disk
+    full_path = os.path.join(get_iodms_root_path(), draft.file_path)
+    try:
+        payload_dict = payload.model_dump()
+        payload_dict["outward_no"] = None
+        payload_dict["folder_id"] = payload.folder_id
+        payload_dict["year"] = draft.year
+        create_draft_document(full_path, payload_dict, db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to overwrite file on disk: {str(e)}")
+
+    changes = payload.model_dump()
+    changes["actioned_by"] = actor_id
+    log_edit(db, "draft", str(draft_id), "edit", actor_id, changes)
+
+    db.commit()
+    return {"message": "Draft updated successfully", "success": True}
 
 
 # FR-170b: Attach supporting files to an outward draft from Compose Outward
@@ -641,6 +833,8 @@ def modify_outward(
     record.template_type = payload.template_type
     old_links = record.linked_documents or []
     record.linked_documents = payload.linked_documents
+    if payload.document_body is not None:
+        record.document_body = payload.document_body
     
     source_id = f"outward:{folder_id}:{year}:{outward_no}"
     sync_bidirectional_links(db, source_id, old_links, payload.linked_documents)
@@ -698,9 +892,14 @@ def get_drafts(db: Session = Depends(get_db)):
             addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == d.address_to[0]).first()
             recipient_name = addr.name if addr else ""
 
+        lan_open_info = build_lan_document_open_info(d.file_path)
         output.append({
             "draft_id": d.draft_id,
             "file_path": d.file_path,
+            "lan_shared_path": lan_open_info["lan_shared_path"],
+            "lan_file_uri": lan_open_info["lan_file_uri"],
+            "word_launcher_uri": lan_open_info["word_launcher_uri"],
+            "word_open_uri": lan_open_info["word_open_uri"],
             "outward_no": d.outward_no,
             "folder_id": d.folder_id,
             "folder_name": folder_name,
@@ -722,11 +921,44 @@ def get_drafts(db: Session = Depends(get_db)):
     return output
 
 
+# FR-052: Get specific draft
+@router.get("/drafts/{draft_id}")
+def get_draft(draft_id: int, db: Session = Depends(get_db)):
+    """Retrieves a specific draft for editing."""
+    draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    
+    # Format the payload for the frontend
+    lan_open_info = build_lan_document_open_info(draft.file_path)
+    return {
+        "draft_id": draft.draft_id,
+        "file_path": draft.file_path,
+        "lan_shared_path": lan_open_info["lan_shared_path"],
+        "lan_file_uri": lan_open_info["lan_file_uri"],
+        "word_launcher_uri": lan_open_info["word_launcher_uri"],
+        "word_open_uri": lan_open_info["word_open_uri"],
+        "folder_id": draft.folder_id,
+        "issuing_date": draft.issuing_date.isoformat(),
+        "address_to": draft.address_to,
+        "cc_to": draft.cc_to,
+        "subject": draft.subject,
+        "remarks": draft.remarks,
+        "prepared_by": draft.prepared_by,
+        "actioned_by": draft.actioned_by,
+        "template_type": draft.template_type,
+        "linked_documents": draft.linked_documents or [],
+        "document_body": draft.document_body,
+        "year": draft.year,
+        "outward_no": draft.outward_no,
+        "is_locked": draft.is_locked,
+        "locked_by": draft.locked_by
+    }
 # FR-052: Lock draft file for editing
 @router.put("/drafts/{draft_id}/lock")
 def lock_draft(
     draft_id: int,
-    payload: DraftLockAction,
+    payload: Optional[DraftLockAction] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -750,14 +982,27 @@ def lock_draft(
             detail=f"This draft is currently being edited by {locker_name}. Please try again later."
         )
 
+    repaired_from_template = rebuild_blank_draft_from_template(draft, db)
+
     draft.is_locked = True
     draft.locked_by = actor_id
     draft.locked_at = datetime.datetime.now()
     
-    log_edit(db, "draft", str(draft_id), "lock", actor_id)
+    log_edit(db, "draft", str(draft_id), "lock", actor_id, {
+        "repaired_from_template": repaired_from_template
+    })
     
     db.commit()
-    return {"message": "Draft file locked for editing", "file_path": draft.file_path, "success": True}
+    lan_open_info = build_lan_document_open_info(draft.file_path)
+    return {
+        "message": "Draft file locked for editing",
+        "file_path": draft.file_path,
+        "lan_shared_path": lan_open_info["lan_shared_path"],
+        "lan_file_uri": lan_open_info["lan_file_uri"],
+        "word_launcher_uri": lan_open_info["word_launcher_uri"],
+        "word_open_uri": lan_open_info["word_open_uri"],
+        "success": True
+    }
 
 
 # FR-053: Unlock draft file
@@ -870,7 +1115,8 @@ def dispatch_draft(
             "address_to": draft.address_to,
             "cc_to": draft.cc_to,
             "subject": draft.subject,
-            "remarks": draft.remarks
+            "remarks": draft.remarks,
+            "document_body": draft.document_body
         }, db)
 
     stamp_outward_reference(full_new_path, {
@@ -902,6 +1148,7 @@ def dispatch_draft(
         attachment_paths=new_attachment_paths,
         template_type=draft.template_type,
         linked_documents=draft.linked_documents,
+        document_body=draft.document_body,
         is_compressed=is_compressed
     )
     
@@ -1103,6 +1350,64 @@ def view_document(path: str, db: Session = Depends(get_db)):
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     }
     return FileResponse(full_path, media_type=media_types.get(ext, "application/octet-stream"), filename=os.path.basename(full_path))
+
+
+# FR-170b: Upload Signed Copy / Additional Attachments to Dispatched Outward Record
+@router.post("/{folder_id}/{year}/{outward_no}/attachments")
+def upload_outward_attachments(
+    folder_id: str,
+    year: int,
+    outward_no: str,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Uploads signed copies or additional attachments to an already dispatched record."""
+    record = db.query(models.OutwardRegister).filter(
+        models.OutwardRegister.folder_id == folder_id,
+        models.OutwardRegister.year == year,
+        models.OutwardRegister.outward_no == outward_no
+    ).first()
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Outward record not found.")
+
+    if not files or (len(files) == 1 and files[0].filename == ""):
+        raise HTTPException(status_code=400, detail="At least one file is required.")
+
+    actor_id = current_user.get("user_id")
+    relative_folder, full_folder = filesystem_utils.ensure_folder_path(
+        get_iodms_root_path(), "Outward", year, folder_id
+    )
+    
+    existing_paths = record.attachment_paths or []
+    new_paths = []
+
+    for idx, file in enumerate(files, start=1):
+        if not file.filename:
+            continue
+        ext = os.path.splitext(file.filename)[1] or ".bin"
+        filename = f"{outward_no}_attachment_{len(existing_paths) + idx}{ext}"
+        relative_path = os.path.join(relative_folder, filename).replace("\\", "/")
+        full_path = os.path.join(full_folder, filename)
+
+        try:
+            with open(full_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+            final_abs_path, was_compressed = filesystem_utils.compress_file_if_large(full_path)
+            if was_compressed:
+                final_filename = os.path.basename(final_abs_path)
+                relative_path = os.path.join(relative_folder, final_filename).replace("\\", "/")
+            new_paths.append(relative_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save attachment: {str(e)}")
+
+    record.attachment_paths = existing_paths + new_paths
+    log_edit(db, "outward", f"{folder_id}:{year}:{outward_no}", "attach", actor_id, {"files": new_paths})
+    db.commit()
+    
+    return {"message": "Files attached successfully", "paths": new_paths, "success": True}
 
 # FR-058: Edit Audit Log Endpoint
 @router.get("/edit-log/{record_type}/{record_id}")

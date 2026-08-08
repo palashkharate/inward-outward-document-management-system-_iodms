@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   Box,
@@ -34,6 +35,8 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import HistoryIcon from '@mui/icons-material/History';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useAuth } from '../App.jsx';
 import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
 import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
@@ -172,15 +175,25 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                   View Document
                 </Button>
 
-                {/* 1. Open / Edit in MS Word (FR-051, FR-052) */}
+                {/* 1. Open / Edit in Word (FR-051, FR-052, EIR-004) */}
                 <Button
                   variant="outlined"
                   color="primary"
                   startIcon={<EditIcon />}
                   onClick={() => handleAction('edit', row)}
-                  disabled={row.is_pending_deletion}
+                  disabled={row.is_pending_deletion || (row.is_locked && row.locked_by !== user?.user_id)}
                 >
-                  Open / Edit in Word
+                  Open in Word
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<EditIcon />}
+                  onClick={() => handleAction('online_edit', row)}
+                  disabled={row.is_pending_deletion || (row.is_locked && row.locked_by !== user?.user_id)}
+                >
+                  Edit Online
                 </Button>
 
                 {/* 2. Dispatch (FR-051, FR-054) */}
@@ -243,6 +256,7 @@ function DraftRow({ row, onAction, user, onViewFile }) {
 
 export default function DraftsDispatchPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [drafts, setDrafts] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -278,7 +292,6 @@ export default function DraftsDispatchPage() {
 
   // Supporting file management dialog
   const [attachmentUploadOpen, setAttachmentUploadOpen] = useState(false);
-
   const fetchDrafts = async () => {
     try {
       const response = await axios.get('/api/outward/drafts');
@@ -298,18 +311,33 @@ export default function DraftsDispatchPage() {
     setActiveDraft(row);
 
     if (action === 'edit') {
+      // Open a window while this click is still a user gesture. This avoids the
+      // browser popup blocker rejecting the Office protocol after the lock call.
+      const wordWindow = window.open('', '_blank');
       try {
-        // FR-052: Lock the draft for current user
-        await axios.put(`/api/outward/drafts/${row.draft_id}/lock`, {
-          user_id: user.user_id
-        });
-        // Reload table
-        fetchDrafts();
-        // Open edit local instructions modal
+        // FR-052: Lock first, then open the exact shared file Word will save to.
+        const response = await axios.put(`/api/outward/drafts/${row.draft_id}/lock`);
+        const lockedDraft = { ...row, ...response.data, is_locked: true, locked_by: user?.user_id };
+        setActiveDraft(lockedDraft);
         setLockOpen(true);
+        fetchDrafts();
+
+        const launchUri = lockedDraft.word_launcher_uri || lockedDraft.word_open_uri;
+        if (launchUri) {
+          if (wordWindow) {
+            wordWindow.location.href = launchUri;
+          } else {
+            window.location.href = launchUri;
+          }
+        } else if (wordWindow) {
+          wordWindow.close();
+        }
       } catch (err) {
-        setErrorMsg(err.response?.data?.detail || 'Failed to lock draft.');
+        if (wordWindow) wordWindow.close();
+        setErrorMsg(err.response?.data?.detail || 'Failed to lock draft for Word editing.');
       }
+    } else if (action === 'online_edit') {
+      navigate(`/draft-editor/${row.draft_id}`);
     } else if (action === 'release_lock') {
       try {
         // FR-053: Unlock draft
@@ -394,6 +422,7 @@ export default function DraftsDispatchPage() {
   const releaseMyLock = async () => {
     setLockOpen(false);
     setReuploadFile(null);
+    if (!activeDraft) return;
     try {
       await axios.put(`/api/outward/drafts/${activeDraft.draft_id}/unlock`);
       setSuccessMsg('Lock released and changes synced.');
@@ -401,6 +430,22 @@ export default function DraftsDispatchPage() {
     } catch (e) {
       setErrorMsg('Failed to release lock.');
     }
+  };
+
+  const copyLanPath = async () => {
+    if (!activeDraft?.lan_shared_path) return;
+    try {
+      await navigator.clipboard.writeText(activeDraft.lan_shared_path);
+      setSuccessMsg('LAN path copied.');
+    } catch (e) {
+      window.prompt('Copy LAN path:', activeDraft.lan_shared_path);
+    }
+  };
+
+  const openInWord = () => {
+    const launchUri = activeDraft?.word_launcher_uri || activeDraft?.word_open_uri;
+    if (!launchUri) return;
+    window.location.href = launchUri;
   };
 
   const handleReupload = async () => {
@@ -511,17 +556,16 @@ export default function DraftsDispatchPage() {
           <Box sx={{ bgcolor: 'rgba(0,0,0,0.2)', p: 2, borderRadius: 1.5, mb: 3, border: '1px solid rgba(255,255,255,0.05)' }}>
             <Typography variant="caption" color="text.secondary">LAN Shared Path of the Draft File:</Typography>
             <Typography variant="body2" sx={{ fontFamily: 'monospace', mt: 0.5, wordBreak: 'break-all' }}>
-              \\Server\IODMS_DATA\{activeDraft?.file_path}
+              {activeDraft?.lan_shared_path || 'LAN shared path is not configured in Admin > System Settings.'}
             </Typography>
           </Box>
           
           <Typography variant="body2" color="text.secondary">
             <strong>How to edit:</strong><br />
-            1. Copy the path above or navigate to the shared drafts folder.<br />
-            2. Double-click the file to open it in your local <strong>Microsoft Word</strong> editor.<br />
-            3. Make your revisions, save, and exit Word.<br />
-            4. If edited directly via LAN, click <strong>Release Lock</strong> below.<br />
-            5. Alternatively, download the draft, edit, and re-upload here.
+            1. Microsoft Word opens the shared draft automatically. If it did not, use Open in Word below.<br />
+            2. Make your revisions, save, and exit Word.<br />
+            3. Click <strong>Release Lock</strong> after Word has closed.<br />
+            4. If direct LAN opening is unavailable, download, edit, and re-upload here.
           </Typography>
           
           <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
@@ -537,7 +581,22 @@ export default function DraftsDispatchPage() {
         </DialogContent>
         <DialogActions>
           <Button
-            href={`/api/outward/view-document?path=${activeDraft?.file_path}`}
+            onClick={copyLanPath}
+            startIcon={<ContentCopyIcon />}
+            disabled={!activeDraft?.lan_shared_path}
+          >
+            Copy Path
+          </Button>
+          <Button
+            onClick={openInWord}
+            startIcon={<OpenInNewIcon />}
+            variant="outlined"
+            disabled={!activeDraft?.word_open_uri}
+          >
+            Open in Word
+          </Button>
+          <Button
+            href={`/api/outward/view-document?path=${encodeURIComponent(activeDraft?.file_path || '')}`}
             target="_blank"
             variant="outlined"
           >

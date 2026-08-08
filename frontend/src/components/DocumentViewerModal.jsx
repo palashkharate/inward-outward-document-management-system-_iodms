@@ -13,33 +13,35 @@ import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
 import IconButton from '@mui/material/IconButton';
 import axios from 'axios';
-import * as docx from 'docx-preview';
+
+function rtfToPlainText(rtf) {
+  return rtf
+    .replace(/\\par[d]?\s?/g, '\n')
+    .replace(/\\line\s?/g, '\n')
+    .replace(/\\tab\s?/g, '\t')
+    .replace(/\\'([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\[a-zA-Z]+-?\d*\s?/g, '')
+    .replace(/[{}]/g, '')
+    .replace(/\\\\/g, '\\')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, isPdf }) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [blobUrl, setBlobUrl] = useState('');
-  const [fileBlob, setFileBlob] = useState(null);
-  const [textPreview, setTextPreview] = useState('');
+  const [docxBlob, setDocxBlob] = useState(null);
+  const [legacyPreviewText, setLegacyPreviewText] = useState('');
+  const docxPreviewRef = useRef(null);
+  const isDocx = /\.docx$/i.test(fileName || '');
+  const isLegacyWord = /\.(doc|rtf)$/i.test(fileName || '');
   
-  const containerRef = useRef(null);
-  const isDocx = fileName?.toLowerCase().endsWith('.docx');
-  const isLegacyDoc = fileName?.toLowerCase().endsWith('.doc') || fileName?.toLowerCase().endsWith('.rtf');
-
-  const stripRtf = (text) => text
-    .replace(/\\line\s?/g, '\n')
-    .replace(/\\par\s?/g, '\n')
-    .replace(/\\'[0-9a-fA-F]{2}/g, '')
-    .replace(/\\[a-zA-Z]+-?\d*\s?/g, '')
-    .replace(/[{}]/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
   useEffect(() => {
     if (!open || !fileUrl) {
       setBlobUrl('');
-      setFileBlob(null);
-      setTextPreview('');
+      setDocxBlob(null);
+      setLegacyPreviewText('');
       return;
     }
 
@@ -47,24 +49,28 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
     const fetchDocument = async () => {
       setLoading(true);
       setErrorMsg('');
-      setTextPreview('');
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-      }
       try {
         const response = await axios.get(fileUrl, { responseType: 'blob' });
         if (!isMounted) return;
         
-        const blob = new Blob([response.data], { 
-          type: isPdf ? 'application/pdf' : 
-                isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 
-                isLegacyDoc ? 'application/msword' :
-                'application/octet-stream' 
+        const blob = new Blob([response.data], {
+          type: isPdf ? 'application/pdf' : 'application/octet-stream' 
         });
         
-        setFileBlob(blob);
         const url = URL.createObjectURL(blob);
         setBlobUrl(url);
+        setDocxBlob(isDocx ? blob : null);
+
+        if (isLegacyWord) {
+          const documentText = await blob.text();
+          if (documentText.startsWith('{\\rtf')) {
+            setLegacyPreviewText(rtfToPlainText(documentText));
+          } else {
+            setLegacyPreviewText('');
+          }
+        } else {
+          setLegacyPreviewText('');
+        }
       } catch (err) {
         if (isMounted) setErrorMsg('Failed to load document. It may be missing or access is denied.');
       } finally {
@@ -80,38 +86,30 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [open, fileUrl, isPdf, isDocx, isLegacyDoc]);
+  }, [open, fileUrl, isPdf, isDocx, isLegacyWord]);
 
   useEffect(() => {
-    if (isDocx && fileBlob && containerRef.current) {
+    if (!open || !isDocx || !docxBlob || !docxPreviewRef.current) return;
+
+    let cancelled = false;
+    const renderDocx = async () => {
       try {
-        if (containerRef.current) {
-          containerRef.current.innerHTML = '';
-        }
-        docx.renderAsync(fileBlob, containerRef.current)
-          .catch(err => {
-            console.error("docx-preview error:", err);
-            fileBlob.text().then((text) => {
-              setTextPreview(text);
-              setErrorMsg('');
-            }).catch(() => setErrorMsg("Failed to render DOCX file."));
-          });
+        const { renderAsync } = await import('docx-preview');
+        if (cancelled || !docxPreviewRef.current) return;
+        docxPreviewRef.current.replaceChildren();
+        await renderAsync(docxBlob, docxPreviewRef.current, undefined, {
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false
+        });
       } catch (err) {
-        console.error("docx render exception:", err);
+        if (!cancelled) setErrorMsg('Failed to preview this Word document. You can still download it.');
       }
-    }
-  }, [isDocx, fileBlob, containerRef]);
+    };
 
-  useEffect(() => {
-    if (isLegacyDoc && fileBlob) {
-      fileBlob.text().then((text) => {
-        const readable = text.includes('{\\rtf') ? stripRtf(text) : text;
-        setTextPreview(readable || 'Preview not available. Download the file to open it in Microsoft Word.');
-      }).catch(() => {
-        setTextPreview('Preview not available. Download the file to open it in Microsoft Word.');
-      });
-    }
-  }, [isLegacyDoc, fileBlob]);
+    renderDocx();
+    return () => { cancelled = true; };
+  }, [open, isDocx, docxBlob]);
 
   const handleDownload = () => {
     if (blobUrl) {
@@ -157,19 +155,25 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
                 title={fileName}
                 sx={{ width: '100%', height: '100%', border: 'none' }}
               />
-            ) : isDocx && !textPreview ? (
-              <Box 
-                ref={containerRef} 
-                sx={{ 
-                  width: '100%', 
-                  height: '100%', 
-                  overflowY: 'auto',
-                  bgcolor: '#f5f5f5' // docx-preview adds white pages on top of background
-                }} 
-              />
-            ) : (isDocx || isLegacyDoc) && textPreview ? (
-              <Box sx={{ p: 3, whiteSpace: 'pre-wrap', fontFamily: 'Consolas, monospace', overflow: 'auto', height: '100%' }}>
-                {textPreview}
+            ) : isDocx ? (
+              <Box ref={docxPreviewRef} sx={{ flex: 1, overflow: 'auto', bgcolor: '#f0f0f0', p: 2 }} />
+            ) : legacyPreviewText ? (
+              <Box
+                component="pre"
+                sx={{
+                  flex: 1,
+                  overflow: 'auto',
+                  m: 0,
+                  p: 4,
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: '"Times New Roman", Times, serif',
+                  fontSize: '1rem',
+                  lineHeight: 1.6,
+                  bgcolor: '#fff',
+                  color: '#111'
+                }}
+              >
+                {legacyPreviewText}
               </Box>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', p: 4 }}>
@@ -177,7 +181,7 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
                   Preview not available for this file format.
                 </Typography>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                  Please download the file to view its contents.
+                  This file is a binary Microsoft Word document. Please download it to view its contents in Microsoft Word.
                 </Typography>
                 <Button 
                   variant="contained" 

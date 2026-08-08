@@ -1,7 +1,9 @@
 import sys
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # This adds the current folder to Python's search path so it can find database.py, models.py, etc.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -39,12 +41,17 @@ def apply_migrations():
 
 # NFR-001, NFR-006: Allow only local connections (CORS configuration).
 # This prevents other websites from making requests to our backend.
-# The React development server typically runs on port 3000 or 5173.
+# In production mode (serving frontend from same origin), CORS is less critical
+# but we keep it for dev mode when React runs on a separate port.
 origins = [
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
+    "http://localhost:80",
+    "http://127.0.0.1:80",
+    "http://localhost",
+    "http://127.0.0.1",
 ]
 
 app.add_middleware(
@@ -75,7 +82,58 @@ app.include_router(outward.router, prefix="/api/outward", tags=["Outward Registe
 # Router for Auditor View (Module 0)
 app.include_router(auditor.router, prefix="/api/auditor", tags=["Auditor View"])
 
-@app.get("/")
-def read_root():
+# FR-NFR: Health check endpoint for monitoring
+@app.get("/api/health")
+def health_check():
     """Simple health check endpoint to verify backend is running."""
     return {"status": "running", "app": "IODMS API"}
+
+
+# --- FR-NFR: Unified Production Serving ---
+# Serve the compiled React frontend from the dist folder.
+# This allows running the entire app (frontend + backend) from a single
+# server process on one port — ideal for the air-gapped defense LAN.
+
+# Path to the compiled frontend build output
+FRONTEND_DIST = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+)
+
+if os.path.isdir(FRONTEND_DIST):
+    # Serve JS, CSS, images, and other static assets from /assets/
+    app.mount(
+        "/assets",
+        StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")),
+        name="static-assets"
+    )
+
+    # Serve /images/ if it exists (logo, icons, etc.)
+    images_dir = os.path.join(FRONTEND_DIST, "images")
+    if os.path.isdir(images_dir):
+        app.mount(
+            "/images",
+            StaticFiles(directory=images_dir),
+            name="static-images"
+        )
+
+    # SPA catch-all: any route that is NOT an /api/* request gets index.html
+    # This lets React Router handle client-side routes like /compose-outward
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """FR-NFR: Catch-all route that serves the React SPA index.html.
+        
+        Any URL that doesn't match an /api/* endpoint gets the React app,
+        which then handles routing on the client side.
+        """
+        # If a real file exists in dist (e.g. favicon.ico), serve it directly
+        file_path = os.path.join(FRONTEND_DIST, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Otherwise serve index.html for React Router to handle
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+else:
+    # Development mode fallback — no frontend build present
+    @app.get("/")
+    def read_root():
+        """Simple health check endpoint to verify backend is running."""
+        return {"status": "running", "app": "IODMS API", "mode": "dev (no frontend dist found)"}

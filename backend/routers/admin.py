@@ -55,6 +55,7 @@ class NameOnlySchema(BaseModel):
 
 class SystemSettingsSchema(BaseModel):
     iodms_root_path: str
+    iodms_lan_share_path: Optional[str] = ""
     cutover_override_date: Optional[str] = None
 
 class AllowedIPCreate(BaseModel):
@@ -874,6 +875,7 @@ def update_settings(payload: SystemSettingsSchema):
     """Updates system settings like IODMS root path and cutover dates."""
     settings = {
         "iodms_root_path": payload.iodms_root_path,
+        "iodms_lan_share_path": (payload.iodms_lan_share_path or "").strip(),
         "cutover_override_date": payload.cutover_override_date
     }
     

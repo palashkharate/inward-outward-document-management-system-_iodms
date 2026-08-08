@@ -390,6 +390,7 @@ export default function AdminPage() {
   // SUB-TAB 5: SYSTEM SETTINGS
   // ----------------------------------------------------
   const [iodmsPath, setIodmsPath] = useState('');
+  const [lanSharePath, setLanSharePath] = useState('');
   const [cutoverDate, setCutoverDate] = useState('');
   const [dbeaverDialogOpen, setDbeaverDialogOpen] = useState(false);
 
@@ -397,6 +398,7 @@ export default function AdminPage() {
     try {
       const res = await axios.get('/api/admin/settings');
       setIodmsPath(res.data.iodms_root_path);
+      setLanSharePath(res.data.iodms_lan_share_path || '');
       setCutoverDate(res.data.cutover_override_date || '');
     } catch (e) {
       console.error(e);
@@ -410,6 +412,7 @@ export default function AdminPage() {
       // FR-140, FR-141: Save settings
       await axios.put('/api/admin/settings', {
         iodms_root_path: iodmsPath,
+        iodms_lan_share_path: lanSharePath,
         cutover_override_date: cutoverDate || null
       });
       setSuccessMsg('System configurations updated successfully.');
@@ -993,6 +996,24 @@ export default function AdminPage() {
                 </Typography>
               </Grid>
 
+              {/* LAN share path configuration (FR-052, EIR-003) */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                  2. Configure client LAN share path for Word editing:
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="LAN Shared IODMS Path"
+                  value={lanSharePath}
+                  onChange={(e) => setLanSharePath(e.target.value)}
+                  sx={{ mt: 1, mb: 1 }}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  Example: \\Server\IODMS_DATA. Officer PCs use this path to open drafts directly in Microsoft Word.
+                </Typography>
+              </Grid>
+
               <Grid item xs={12}>
                 <Divider />
               </Grid>
@@ -1000,7 +1021,7 @@ export default function AdminPage() {
               {/* Year Cutover Override Date picker (FR-141) */}
               <Grid item xs={12}>
                 <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                  2. Manual Year Cutover Override Date:
+                  3. Manual Year Cutover Override Date:
                 </Typography>
                 <TextField
                   type="date"
@@ -1023,7 +1044,7 @@ export default function AdminPage() {
               {/* Direct DB Access - Open in DBeaver instructions (FR-142, EIR-005) */}
               <Grid item xs={12}>
                 <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                  3. Direct Database Access:
+                  4. Direct Database Access:
                 </Typography>
                 <Button
                   variant="outlined"
@@ -1043,7 +1064,7 @@ export default function AdminPage() {
               {/* Previous Year Entry (FR-144) */}
               <Grid item xs={12}>
                 <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                  4. Previous Year Document Entry:
+                  5. Previous Year Document Entry:
                 </Typography>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item>

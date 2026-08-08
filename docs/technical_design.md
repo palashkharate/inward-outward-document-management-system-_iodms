@@ -177,6 +177,27 @@ COMMENT ON TABLE allowed_ips IS 'Whitelist of IP addresses allowed to access the
 
 To keep code manageable by a single developer (NFR-012), the project uses a clean structure.
 
+### LAN Word Editing Settings
+
+Direct Microsoft Word editing uses two separate paths:
+
+| Setting | Used By | Purpose |
+|---|---|---|
+| `iodms_root_path` | FastAPI server process | Local/server filesystem path used for creating, reading, moving, and deleting files. |
+| `iodms_lan_share_path` | Officer PCs through the browser UI | Client-visible UNC share path used to open the same draft files in Microsoft Word. |
+
+For example, the server may write to `D:\IODMS_DATA`, while officer PCs open the same files through `\\Server\IODMS_DATA`. The backend stores only relative document paths such as `Drafts/2026/Su-30/draft-admin.doc`; API responses combine that relative path with `iodms_lan_share_path` and return both `lan_shared_path` and `word_open_uri`.
+
+The direct edit flow remains pessimistically locked:
+
+1. User clicks `Open / Edit in Word` on a draft.
+2. Backend locks the draft with `is_locked`, `locked_by`, and `locked_at`.
+3. UI shows the UNC path and an `ms-word:ofe|u|file://...` launch URI.
+4. User edits and saves directly in Microsoft Word.
+5. User releases the lock manually, or uses download/re-upload fallback if direct LAN opening is unavailable.
+
+Admin configures `iodms_lan_share_path` from Admin -> System Settings. If it is blank, direct Word opening is disabled and the download/re-upload fallback remains available.
+
 ```
 inword outword folder/
 │
