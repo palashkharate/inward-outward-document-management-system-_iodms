@@ -31,16 +31,13 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [blobUrl, setBlobUrl] = useState('');
-  const [docxBlob, setDocxBlob] = useState(null);
   const [legacyPreviewText, setLegacyPreviewText] = useState('');
-  const docxPreviewRef = useRef(null);
   const isDocx = /\.docx$/i.test(fileName || '');
   const isLegacyWord = /\.(doc|rtf)$/i.test(fileName || '');
   
   useEffect(() => {
     if (!open || !fileUrl) {
       setBlobUrl('');
-      setDocxBlob(null);
       setLegacyPreviewText('');
       return;
     }
@@ -59,7 +56,6 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
         
         const url = URL.createObjectURL(blob);
         setBlobUrl(url);
-        setDocxBlob(isDocx ? blob : null);
 
         if (isLegacyWord) {
           const documentText = await blob.text();
@@ -87,29 +83,6 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
       }
     };
   }, [open, fileUrl, isPdf, isDocx, isLegacyWord]);
-
-  useEffect(() => {
-    if (!open || !isDocx || !docxBlob || !docxPreviewRef.current) return;
-
-    let cancelled = false;
-    const renderDocx = async () => {
-      try {
-        const { renderAsync } = await import('docx-preview');
-        if (cancelled || !docxPreviewRef.current) return;
-        docxPreviewRef.current.replaceChildren();
-        await renderAsync(docxBlob, docxPreviewRef.current, undefined, {
-          inWrapper: true,
-          ignoreWidth: false,
-          ignoreHeight: false
-        });
-      } catch (err) {
-        if (!cancelled) setErrorMsg('Failed to preview this Word document. You can still download it.');
-      }
-    };
-
-    renderDocx();
-    return () => { cancelled = true; };
-  }, [open, isDocx, docxBlob]);
 
   const handleDownload = () => {
     if (blobUrl) {
@@ -155,8 +128,6 @@ export default function DocumentViewerModal({ open, onClose, fileUrl, fileName, 
                 title={fileName}
                 sx={{ width: '100%', height: '100%', border: 'none' }}
               />
-            ) : isDocx ? (
-              <Box ref={docxPreviewRef} sx={{ flex: 1, overflow: 'auto', bgcolor: '#f0f0f0', p: 2 }} />
             ) : legacyPreviewText ? (
               <Box
                 component="pre"

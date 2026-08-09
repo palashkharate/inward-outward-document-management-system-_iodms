@@ -31,7 +31,9 @@ import {
   ListItem,
   Chip,
   IconButton,
-  ListItemText
+  ListItemText,
+  Tooltip,
+  Popover
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
@@ -41,7 +43,9 @@ import StorageIcon from '@mui/icons-material/Storage';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { useAuth } from '../App.jsx';
+
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -998,9 +1002,27 @@ export default function AdminPage() {
 
               {/* LAN share path configuration (FR-052, EIR-003) */}
               <Grid item xs={12}>
-                <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                  2. Configure client LAN share path for Word editing:
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    2. Configure client LAN share path for Word editing:
+                  </Typography>
+                  <Tooltip 
+                    title={
+                      <React.Fragment>
+                        <Typography variant="subtitle2" gutterBottom>How to setup LAN path:</Typography>
+                        If your users access this app via an IP address (e.g. http://192.168.1.50) and they can access the shared folder over LAN directly at \\192.168.1.50\IODMS_DATA, 
+                        you can configure that path here. <br/><br/>
+                        Leave blank to have the system try to auto-detect it, but it is safer to explicitly set the path here. E.g. \\SERVER\IODMS_DATA
+                      </React.Fragment>
+                    } 
+                    arrow 
+                    placement="right"
+                  >
+                    <IconButton size="small" sx={{ ml: 1 }}>
+                      <HelpOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
                 <TextField
                   fullWidth
                   size="small"
