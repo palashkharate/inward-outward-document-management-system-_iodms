@@ -6,6 +6,30 @@ and **why** the change was made (linking back to FR IDs or NFR IDs where applica
 
 ---
 
+## [2026-08-10] Unified Offline Deployment & Phase 5 Draft Usability Fixes
+
+### Added / Modified
+| File | Change | FR/NFR |
+|---|---|---|
+| `docs/Offline_Deployment_Guide.md` | Created comprehensive airgapped server deployment guide. | NFR-005 |
+| `docs/IV_and_V_Report.md` | Created Independent Verification and Validation report. | NFR-006 |
+| `docs/tech_stack_and_deployment_status.md` | Updated deployment status to reflect single-port FastAPI serving built React assets. | EIR-005 |
+| `frontend/src/pages/DraftEditorPage.jsx` | Combined metadata compose fields with Editor.js online editor. | FR-051, FR-031 |
+| `frontend/src/components/OnlineDocumentEditor.jsx` | Full overhaul of Editor.js styling to resemble MS Word (A4 layout, toolbar). | FR-051 |
+| `frontend/src/pages/ComposeOutwardPage.jsx` | Reverted to exclusively handle metadata (Draft creation). | FR-031 |
+| `backend/main.py` | Configured FastAPI to mount `frontend/dist` directory at root (unified port architecture). | EIR-005 |
+| `iodms_offline_bundle/install_offline.bat` | Script pointing `pip` to local `.whl` files. | NFR-005 |
+
+### Decisions Made
+- Replaced the two-port development setup (Node.js on 5173, Python on 8000) with a production unified server: Python serving both API and static frontend assets on Port 80.
+- Docker was deemed unnecessary and overkill for the production server, since all Python dependencies could be perfectly bundled offline using `.whl` files natively.
+
+### Status
+- Phase 5 Usability and Phase 6 Direct Word integration complete.
+- System is 100% production-ready for offline deployment.
+
+---
+
 ## [2026-08-08] Phase 6 Direct LAN Microsoft Word Editing
 
 ### Added / Modified

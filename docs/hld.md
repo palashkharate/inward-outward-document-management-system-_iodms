@@ -6,24 +6,28 @@ This document provides a high-level overview of the structure and flow of the IO
 
 ## 1. System Architecture
 
-The IODMS is built using a classic **Client-Server Architecture**. Below is a diagram showing how the different parts connect to each other:
+The IODMS is built using a classic **Client-Server Architecture**. Recently updated to a **Unified Port Architecture**, the system serves both the frontend web app and backend API from a single FastAPI server on Port 80, ideal for strict firewall defense networks.
 
 ```mermaid
 graph TD
     %% Frontend (Browser)
     subgraph Client ["Client Machine (Web Browser)"]
         UI["React Web App (Material UI)"]
+        Word["MS Word (via ms-word: URI)"]
     end
 
     %% Backend (Server)
-    subgraph Server ["Server Machine (Localhost or central PC)"]
-        API["FastAPI Web Server (Python)"]
+    subgraph Server ["Server Machine (FastAPI - Port 80)"]
+        Static["Static Files (frontend/dist)"]
+        API["FastAPI Backend Routes"]
         DB[(PostgreSQL Database)]
         FS["Filesystem (IODMS_DATA/)"]
     end
 
     %% Connections
-    UI -- "HTTP Requests (JSON data / uploads)" --> API
+    UI -- "Fetches HTML/JS" --> Static
+    UI -- "REST API Calls" --> API
+    Word -- "SMB/CIFS (LAN Share)" --> FS
     API -- "SQL Queries (CRUD)" --> DB
     API -- "File Read/Write" --> FS
 ```
@@ -31,15 +35,17 @@ graph TD
 ### Layer Responsibilities
 
 1. **Frontend (React + Material UI)**
-   - Runs in the user's web browser (Chromium 109+).
+   - Pre-compiled into static files (`frontend/dist/`) and served directly by FastAPI.
+   - Runs in the user's web browser.
    - Responsible for showing the user interface (forms, tables, dashboard).
    - Collects user inputs, validates them, and sends them to the backend server.
-   - Enforces view-only watermarks and restricts actions for the **Auditor** role.
+   - Can trigger local MS Word to open network files via the `ms-word:` protocol.
 
 2. **Backend Server (FastAPI)**
-   - Runs on the central server machine.
+   - Runs on the central server machine on Port 80.
+   - Serves both the React frontend and the REST API.
    - Receives commands and data from the frontend.
-   - Validates data, manages user authentication, and coordinates saving/retrieving data from the database and the filesystem.
+   - Validates data, manages user authentication (JWT), and coordinates saving/retrieving data from the database and the filesystem.
 
 3. **Database (PostgreSQL)**
    - Stores all structured information (user accounts, address book, metadata about inward/outward documents).

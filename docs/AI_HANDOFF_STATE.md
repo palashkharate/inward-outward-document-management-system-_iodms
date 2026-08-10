@@ -19,20 +19,22 @@ If you are a new AI taking over this project, this document provides the critica
 1. **Inward Register & Outward Register:** Full CRUD for tracking document metadata.
 2. **Linked Documents:** Documents can be linked bi-directionally between Inward/Outward.
 3. **Drafts & Dispatch:** Users create drafts (reserves space/folder). Once finalized, a draft is "dispatched", assigning it a final Outward Number and moving it to the Outward Register.
-4. **Draft Editor Integration (Phase 3/5):** 
-   - `Editor.js` is embedded in the frontend for online editing (`document_body` JSONB column).
-   - Backend `routers/outward.py::create_draft_document()` converts Editor.js JSON blocks to a physical `.docx` template using python-docx.
-5. **Concurrency (Locks):** Drafts can be locked by users to prevent overwriting. Lock data is `is_locked`, `locked_by`, `locked_at`.
-6. **Unified Server:** A script `build_and_run_prod.bat` compiles the React app and serves it natively from FastAPI `main.py` on port 80.
+4. **Draft Editor Integration (Phase 5):** 
+   - A dedicated `DraftEditorPage.jsx` houses a Word-like rich text editor featuring compose fields editable right alongside the document body.
+   - Real-time concurrency: Drafts can be locked by users to prevent overwriting. Lock data is `is_locked`, `locked_by`, `locked_at`.
+   - View-Only mode mounts when another user has the lock.
+5. **Direct LAN Word Editing (Phase 6):**
+   - Implements `ms-word:ofe|u|file://...` protocols allowing users to open drafts and documents directly in desktop Microsoft Word over an SMB LAN Share.
+   - Admin panel allows configuring the LAN Shared IODMS Path.
+6. **Unified Server & Offline Bundle:** 
+   - The Vite build is output to `frontend/dist` and served by `backend/main.py` on port 80.
+   - A complete `iodms_offline_bundle` folder with `.whl` files and `install_offline.bat` allows for airgapped deployment on Windows Server 2012 without Docker or internet.
 
-## Current Work in Progress: Phase 5 (Draft Editor Usability)
-We are currently refactoring how Draft editing works because the user reported usability issues:
-1. **Issue:** `ComposeOutwardPage.jsx` was bloated with the `OnlineDocumentEditor`.
-   - **Fix:** Reverting Compose to just metadata form. Moving the Editor to a new dedicated `DraftEditorPage.jsx`.
-2. **Issue:** Users want a View-Only mode if someone else is editing the draft.
-   - **Fix:** `DraftEditorPage.jsx` checks the lock status. If locked by another user, it mounts Editor.js in `readOnly: true` mode with a warning banner.
-3. **Issue:** `DocumentViewerModal.jsx` (the iframe preview) renders garbage text when viewing `.docx` files because browsers can't render them offline.
-   - **Fix:** Adding an extension check. If it's a Word file, hide the iframe and show a "Preview not available, please click Download" message.
+## Current Project State
+**Status:** VALIDATED & COMPLETED.
+- All functional requirements (FR) from `IODMS_requirements_context.md` have been met.
+- Phase 5 (Concurrency & Online Editing) and Phase 6 (Direct Word Editing) are fully merged and functional.
+- The system is ready for immediate deployment on the defense server.
 
 ## File Locations
 - **Backend:** `backend/`
@@ -40,10 +42,8 @@ We are currently refactoring how Draft editing works because the user reported u
   - `models.py` - SQLAlchemy models.
   - `routers/outward.py` - Contains the `GET /drafts/{draft_id}` and `PUT /drafts/{draft_id}` endpoints, plus document generation logic.
 - **Frontend:** `frontend/src/`
-  - `pages/DraftEditorPage.jsx` - The new dedicated editor page (currently being built).
-  - `pages/ComposeOutwardPage.jsx` - Create/Modify metadata only.
-  - `pages/DraftsDispatchPage.jsx` - The drafts dashboard with "Edit Online" buttons.
-  - `components/DocumentViewerModal.jsx` - The in-browser viewer.
-  - `components/OnlineDocumentEditor.jsx` - The Editor.js React wrapper.
-
-You can safely run `npm run build` from the `frontend` folder to test compilations.
+  - `pages/DraftEditorPage.jsx` - The full-page draft editor combining metadata editing + Word-like Editor.js.
+  - `pages/ComposeOutwardPage.jsx` - Create metadata only.
+  - `pages/DraftsDispatchPage.jsx` - The drafts dashboard.
+  - `components/DocumentViewerModal.jsx` - The in-browser viewer (hides iframe for `.docx`).
+  - `components/OnlineDocumentEditor.jsx` - The custom Word-style React wrapper around Editor.js.
