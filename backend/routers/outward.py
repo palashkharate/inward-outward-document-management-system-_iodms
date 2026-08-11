@@ -57,9 +57,9 @@ def get_template_document_extension(template_id, db: Session) -> str:
     """Uses the template's actual format so copied templates stay valid files."""
     template = get_selected_template(template_id, db)
     if not template:
-        return ".doc"
+        return ".docx"
     extension = os.path.splitext(template.file_path)[1].lower()
-    return extension if extension in SUPPORTED_TEMPLATE_EXTENSIONS else ".doc"
+    return extension if extension in SUPPORTED_TEMPLATE_EXTENSIONS else ".docx"
 
 def check_draft_locks(db: Session):
     """Auto-expires locks older than 30 minutes."""
@@ -361,10 +361,11 @@ def create_draft_document(filepath: str, data: dict, db: Session):
                 pass
             
     # If no template or copying failed, generate basic file
+    import docx
+    doc = docx.Document()
+    doc.add_heading(data.get("subject", "Document"), 0)
+    
     if document_body and "blocks" in document_body:
-        import docx
-        doc = docx.Document()
-        doc.add_heading(data.get("subject", "Document"), 0)
         for block in document_body["blocks"]:
             if block["type"] == "paragraph":
                 doc.add_paragraph(block["data"].get("text", ""))
@@ -374,10 +375,11 @@ def create_draft_document(filepath: str, data: dict, db: Session):
                 style = 'List Number' if block["data"].get("style") == "ordered" else 'List Bullet'
                 for item in block["data"].get("items", []):
                     doc.add_paragraph(item, style=style)
-        doc.save(filepath)
     else:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(create_rtf_document_content(data, db))
+        doc.add_paragraph("[Place your letter body contents here...]")
+        doc.add_paragraph("Remarks: " + str(data.get("remarks") or ""))
+        
+    doc.save(filepath)
 
 
 def is_blank_fallback_draft(filepath: str) -> bool:
@@ -545,8 +547,28 @@ def update_draft(
     if payload.document_body is not None:
         draft.document_body = payload.document_body
 
-    # Recreate the file on disk
+    # Auto-upgrade legacy .doc drafts to .docx to prevent python-docx zip corruption
+    if draft.file_path.lower().endswith(".doc"):
+        old_full_path = os.path.join(get_iodms_root_path(), draft.file_path)
+        draft.file_path = draft.file_path[:-4] + ".docx"
+        if os.path.exists(old_full_path):
+            try:
+                os.remove(old_full_path)
+            except OSError:
+                pass
+        
+        # Update attachment references if the primary document was renamed
+        if draft.attachment_paths:
+            new_paths = []
+            for p in draft.attachment_paths:
+                if p.lower().endswith(".doc") and p[:-4] == old_full_path[:-4]:
+                    new_paths.append(draft.file_path)
+                else:
+                    new_paths.append(p)
+            draft.attachment_paths = new_paths
+
     full_path = os.path.join(get_iodms_root_path(), draft.file_path)
+    
     try:
         payload_dict = payload.model_dump()
         payload_dict["outward_no"] = None
