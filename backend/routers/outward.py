@@ -1064,7 +1064,7 @@ def dispatch_draft(
     
     ext = os.path.splitext(old_relative_path)[1]
     if not ext:
-        ext = ".doc"
+        ext = ".docx"
     new_filename = f"{outward_no}{ext}"
     is_compressed = (ext.lower() == ".zip")
     
