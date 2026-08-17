@@ -199,6 +199,23 @@ export default function DraftEditorPage() {
     navigate('/drafts');
   };
 
+  // FR-051: Get display text for the To address
+  const getAddressToDisplayText = () => {
+    if (!addressTo) return '';
+    const contact = contacts.find(c => c.address_id === addressTo);
+    if (!contact) return '';
+    return [contact.name, contact.designation, contact.organisation, contact.address_line_1, contact.address_line_2].filter(Boolean).join('\n');
+  };
+
+  // FR-051: Get display text for CC recipients
+  const getCcDisplayText = () => {
+    if (!ccList || ccList.length === 0) return '';
+    return ccList.map(id => {
+      const c = contacts.find(ct => ct.address_id === id);
+      return c ? c.name : '';
+    }).filter(Boolean).join(', ');
+  };
+
   // FR-051: Helper — mark form as dirty when any field changes
   const markDirty = () => setHasUnsavedChanges(true);
 
@@ -493,6 +510,14 @@ export default function DraftEditorPage() {
             setHasUnsavedChanges(true);
           }}
           readOnly={isReadOnly}
+          letterMeta={{
+            subject: subject,
+            addressToText: getAddressToDisplayText(),
+            ccText: getCcDisplayText(),
+            preparedBy: preparedBy,
+            date: issuingDate,
+            outwardReference: `HAL/NK/D/DAE/${folderId}/${draft?.year || new Date().getFullYear()}/Pending Dispatch`
+          }}
         />
       </Paper>
     </Box>

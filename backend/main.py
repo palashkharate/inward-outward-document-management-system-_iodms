@@ -4,6 +4,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from sqlalchemy import text
+from contextlib import asynccontextmanager
 
 # This adds the current folder to Python's search path so it can find database.py, models.py, etc.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -16,15 +18,9 @@ from routers import auth, admin, inward, outward, auditor, dashboard
 # This runs the SQL commands to create the tables in PostgreSQL.
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(
-    title="IODMS Backend API",
-    description="Backend API for the Inward/Outward Document Management System at HAL AURDC, Nashik",
-    version="1.0"
-)
-
-from sqlalchemy import text
-@app.on_event("startup")
-def apply_migrations():
+@asynccontextmanager
+async def lifespan(app):
+    # Startup: apply database migrations
     with engine.begin() as conn:
         migrations = [
             "ALTER TABLE outward_register ADD COLUMN linked_documents VARCHAR[] DEFAULT '{}'",
@@ -37,7 +33,15 @@ def apply_migrations():
                 conn.execute(text(query))
             except Exception:
                 pass
+    yield
+    # Shutdown: nothing needed
 
+app = FastAPI(
+    title="IODMS Backend API",
+    description="Backend API for the Inward/Outward Document Management System at HAL AURDC, Nashik",
+    version="1.0",
+    lifespan=lifespan
+)
 
 # NFR-001, NFR-006: Allow only local connections (CORS configuration).
 # This prevents other websites from making requests to our backend.
@@ -57,6 +61,7 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"http://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

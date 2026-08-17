@@ -24,7 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 
 // FR-051: OnlineDocumentEditor — Word-like rich text editing experience
-export default function OnlineDocumentEditor({ initialData, onChange, readOnly = false }) {
+export default function OnlineDocumentEditor({ initialData, onChange, readOnly = false, letterMeta }) {
   const editorInstance = useRef(null);
   const editorHolder = useRef(null);
   const [isReady, setIsReady] = useState(false);
@@ -408,30 +408,58 @@ export default function OnlineDocumentEditor({ initialData, onChange, readOnly =
             },
           }}
         >
-          {/* Top page margin indicator (subtle ruler-like line) */}
-          <Box
-            sx={{
-              borderBottom: '1px dashed #D5D8DC',
-              mb: 3,
-              pb: 1,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <DescriptionIcon sx={{ fontSize: '1rem', color: '#999' }} />
-              <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem', letterSpacing: 1, textTransform: 'uppercase' }}>
-                Document Body
+          {/* FR-051: Document letterhead context */}
+          {letterMeta && (
+            <Box sx={{ mb: 4 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Box component="img" src="/images/hal_logo.jpg" alt="HAL Logo" sx={{ height: 40, mr: 2 }} />
+                <Box>
+                  <Typography sx={{ color: '#003366', fontWeight: 'bold', fontSize: '16px', lineHeight: 1.2 }}>
+                    HINDUSTAN AERONAUTICS LIMITED
+                  </Typography>
+                  <Typography sx={{ color: '#666', fontSize: '11px', lineHeight: 1 }}>
+                    Aircraft Research & Design Centre, Nashik Division
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ borderBottom: '2px solid #003366', mb: 2 }} />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                <Typography sx={{ fontSize: '10pt' }}><strong>Ref:</strong> {letterMeta.outwardReference}</Typography>
+                <Typography sx={{ fontSize: '10pt' }}><strong>Date:</strong> {letterMeta.date}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: '12pt', whiteSpace: 'pre-line', mb: 2 }}>
+                To,{"\n"}{letterMeta.addressToText}
+              </Typography>
+              <Typography sx={{ fontSize: '12pt', fontWeight: 'bold', mb: 2 }}>
+                Sub: {letterMeta.subject}
+              </Typography>
+              <Typography sx={{ fontSize: '12pt', mb: 2 }}>
+                Sir / Madam,
               </Typography>
             </Box>
-            <Typography variant="caption" sx={{ color: '#B0B0B0', fontSize: '0.65rem' }}>
-              A4 Layout
-            </Typography>
-          </Box>
+          )}
 
           {/* The actual Editor.js mount point */}
-          <Box ref={editorHolder} sx={{ width: '100%', minHeight: 800 }} />
+          <Box ref={editorHolder} sx={{ width: '100%', minHeight: 400 }} />
+
+          {/* FR-051: Document signature context */}
+          {letterMeta && (
+            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+              <Box>
+                {letterMeta.ccText && (
+                  <Typography sx={{ fontSize: '12pt', whiteSpace: 'pre-line' }}>
+                    CC: {letterMeta.ccText}
+                  </Typography>
+                )}
+              </Box>
+              <Box sx={{ textAlign: 'left', minWidth: 250 }}>
+                <Typography sx={{ fontSize: '12pt', mb: 4 }}>Yours faithfully,</Typography>
+                <Typography sx={{ fontSize: '12pt' }}>{letterMeta.preparedBy}</Typography>
+                <Typography sx={{ fontSize: '12pt' }}>For General Manager</Typography>
+                <Typography sx={{ fontSize: '12pt' }}>HAL, AURDC Nashik</Typography>
+              </Box>
+            </Box>
+          )}
         </Paper>
       </Box>
 

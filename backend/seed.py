@@ -111,18 +111,22 @@ def seed_database():
         db.commit()
         
         # Seed a default document template
-        default_template = db.query(models.DocumentTemplate).filter(models.DocumentTemplate.name == "Standard Letter").first()
+        default_template = db.query(models.DocumentTemplate).filter(
+            (models.DocumentTemplate.name == "Standard Letter") | 
+            (models.DocumentTemplate.name == "Standard Letter (General)")
+        ).first()
         if not default_template:
             print("Seeding default Document Template...")
             db.add(models.DocumentTemplate(
-                name="Standard Letter",
+                name="Standard Letter (General)",
                 template_type="General",
-                file_path="Templates/standard_letter.doc",
+                file_path="Templates/hal_standard_letter.docx",
                 uploaded_by="admin"
             ))
-        elif default_template.file_path == "Templates/standard_letter.docx":
-            print("Updating default Document Template to Word 97-2003 compatible .doc...")
-            default_template.file_path = "Templates/standard_letter.doc"
+        elif default_template.file_path != "Templates/hal_standard_letter.docx" or default_template.name != "Standard Letter (General)":
+            print("Updating default Document Template to hal_standard_letter.docx...")
+            default_template.file_path = "Templates/hal_standard_letter.docx"
+            default_template.name = "Standard Letter (General)"
         db.commit()
         print("Database seeded successfully!")
 
@@ -134,32 +138,13 @@ def seed_database():
             os.makedirs(folder_path, exist_ok=True)
             print(f"Created: {folder_path}")
             
-        # Create a Word 97-2003 compatible RTF template saved as .doc.
-        dummy_template = os.path.join(root_path, "Templates", "standard_letter.doc")
-        if not os.path.exists(dummy_template):
-            with open(dummy_template, "w", encoding="utf-8") as f:
-                f.write(r"""{\rtf1\ansi\deff0
-{\fonttbl{\f0 Arial;}}
-\fs24\b HAL AURDC, NASHIK - DEA\b0\par
-\par
-\b Reference:\b0 {{outward_reference}}\par
-\b Date:\b0 {{date}}\par
-\b Folder ID:\b0 {{folder_id}}\par
-\b Prepared By:\b0 {{prepared_by}}\par
-\par
-\b To\b0\par
-{{to}}\par
-\par
-\b CC:\b0 {{cc}}\par
-\par
-\b Subject:\b0 {{subject}}\par
-\par
-Dear Sir/Madam,\par
-\par
-[Place your letter body contents here...]\par
-\par
-\b Remarks:\b0 {{remarks}}\par
-}""")
+        from create_hal_template import create_hal_template
+
+        # Generate the .docx template file if it doesn't exist
+        template_path = os.path.join(root_path, "Templates", "hal_standard_letter.docx")
+        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hal_logo.jpg")
+        if not os.path.exists(template_path):
+            create_hal_template(template_path, logo_path)
 
         print("System setup is complete and ready.")
 

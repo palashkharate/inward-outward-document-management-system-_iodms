@@ -271,36 +271,7 @@ def stamp_outward_reference(filepath: str, data: dict, db: Session):
         pass
 
 
-def rtf_escape(value: str) -> str:
-    return str(value or "").replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\line ")
 
-
-def create_rtf_document_content(data: dict, db: Session) -> str:
-    address_str = get_address_text(db, data.get("address_to") or [])
-    cc_str = get_cc_text(db, data.get("cc_to") or [])
-    outward_reference = build_outward_reference(data)
-    return r"""{\rtf1\ansi\deff0
-{\fonttbl{\f0 Arial;}}
-\fs24\b HAL AURDC, NASHIK - DEA\b0\par
-\par
-\b Reference:\b0 """ + rtf_escape(outward_reference) + r"""\par
-\b Date:\b0 """ + rtf_escape(data.get("issuing_date")) + r"""\par
-\b Folder ID:\b0 """ + rtf_escape(data.get("folder_id")) + r"""\par
-\b Prepared By:\b0 """ + rtf_escape(data.get("prepared_by")) + r"""\par
-\par
-\b To\b0\par
-""" + rtf_escape(address_str or "To be filled") + r"""\par
-\par
-\b CC:\b0 """ + rtf_escape(cc_str) + r"""\par
-\par
-\b Subject:\b0 """ + rtf_escape(data.get("subject")) + r"""\par
-\par
-Dear Sir/Madam,\par
-\par
-[Place your letter body contents here...]\par
-\par
-\b Remarks:\b0 """ + rtf_escape(data.get("remarks") or "") + r"""\par
-}"""
 
 
 # FR-042: Generate Word document draft with placeholder tags
