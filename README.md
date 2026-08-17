@@ -6,6 +6,15 @@ Built specifically for a controlled, air-gapped environment, it features an eleg
 
 ---
 
+## 🏗 Architecture & Key Features
+
+- **Template Architecture**: All document generation uses strictly `.docx` format via the `python-docx` library. Legacy formats (`.doc` or `.rtf`) are no longer used due to corruption issues in MS Word.
+- **Online Document Editor (FR-051)**: The React frontend features a true WYSIWYG editor. It dynamically renders a read-only letterhead context (HAL Logo, Ref No, Date, To Address, Subject) above the Editor.js text body, and a signature context (CC, prepared by) below it. This data is passed via a `letterMeta` prop.
+- **Draft Upgrades & Dispatch**: Any legacy `.doc` drafts are automatically upgraded to `.docx` when saved in the backend to ensure ZIP compliance. Dispatched drafts are renamed with a `.docx` extension (e.g., `001.docx`) in the Outward register.
+- **LAN Networking**: The FastAPI CORS is specifically configured to allow `192.168.*` (the defense LAN), acting as the unified Port 80 backend.
+
+---
+
 ## 🛠 Prerequisites
 
 Since this application is designed for an air-gapped system, ensure you have the following installed manually on your Windows machine before starting:

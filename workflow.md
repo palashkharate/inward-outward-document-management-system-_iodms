@@ -91,7 +91,7 @@ Browser (React + Material UI)  →  FastAPI (Python)  →  PostgreSQL (Database)
                                 (the .docx files)
 ```
 
-- **Browser (React + Material UI):** What the user sees and clicks on — forms, tables, and dropdowns built from Material UI components.
+- **Browser (React + Material UI):** What the user sees and clicks on — forms, tables, and dropdowns built from Material UI components. The online document editor (FR-051) dynamically renders a read-only letterhead and signature context using `letterMeta`, providing a WYSIWYG experience matching the `.docx` output.
 - **FastAPI:** The middleman — receives requests from the browser, talks to the database, returns answers.
 - **PostgreSQL:** Stores every record — inward, outward, address book, users, all dropdown master lists.
 - **File system:** Folders on the PC where .docx files are saved and moved, following the fixed structure: `Drafts/`, `Outward/{Year}/{File Type}/`, `Inward/{Year}/{File Type}/`. File numbers (001, 002…) reset every year, separately for each File Type (e.g. Su‑30 resets independently of LCA).
@@ -152,7 +152,7 @@ To keep this maintainable by a single developer (and to keep future prompts shor
 |---|---|---|
 | **Auth** | Login, session, password reset | Everything else depends on this |
 | **Admin & Address Book** | Admin Panel + Address Book | Shared master lists (designations, organisations, folder types, address groups) live here |
-| **Outward Management** | Create File + Finalise File + Outward Register | Includes the .docx draft generator and the file mover |
+| **Outward Management** | Create File + Finalise File + Outward Register | Includes the `python-docx` draft generator (strictly `.docx`, no `.doc`/`.rtf`), automatic upgrading of legacy `.doc` drafts, renaming dispatched drafts to `.docx`, and the file mover |
 | **Inward Management** | Inward Entry + Inward Register | Includes file upload / drag-and-drop for scanned documents — direct scanner-SDK integration has been dropped from requirements |
 
 Your job: Confirm every FR (FR-001 to FR-054) maps to one of these 4 modules — ask the agent to print the mapping if you're unsure anything was missed.
@@ -264,7 +264,7 @@ If a test fails: note the FR ID, point the agent at the function with that FR co
 **② What to do in this step**
 Very little new code. What changes from standalone:
 
-- FastAPI is configured to listen on the server PC's LAN IP, not just localhost.
+- FastAPI is configured to listen on the server PC's LAN IP, not just localhost. CORS is specifically configured to allow `192.168.*` (the defense LAN).
 - PostgreSQL is configured to accept connections from other PCs on the same LAN.
 - The `Drafts/`, `Outward/`, `Inward/` folders move to a shared network path on the server PC so every client can reach the same files.
 - Session handling is verified to work correctly with up to 10 simultaneous users.
