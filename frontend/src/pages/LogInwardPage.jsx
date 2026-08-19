@@ -32,10 +32,12 @@ import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { useAuth } from '../App.jsx';
+import { useTerminology } from '../TerminologyContext.jsx';
 import DocumentLinkPicker from '../components/DocumentLinkPicker.jsx';
 
 export default function LogInwardPage() {
   const { user } = useAuth();
+  const { t } = useTerminology();
   const navigate = useNavigate();
   const { folder_id, year, inward_no } = useParams();
   const isModifyMode = !!inward_no;
@@ -359,7 +361,7 @@ export default function LogInwardPage() {
       {/* Header toolbar */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight={800}>
-          {isModifyMode ? 'Modify Inward Details' : 'Log Inward Document'}
+          {isModifyMode ? t('lbl_modify_inward_title') : t('lbl_log_inward_title')}
         </Typography>
         
         {/* FR-060: New Button */}
@@ -469,7 +471,7 @@ export default function LogInwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Document Type"
+                label={t('lbl_document_type')}
                 value={docType}
                 onChange={(e) => setDocType(e.target.value)}
               >
@@ -506,7 +508,7 @@ export default function LogInwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Received From"
+                label={t('lbl_received_from')}
                 value={receivedFrom}
                 onChange={(e) => setReceivedFrom(e.target.value)}
               >
@@ -529,7 +531,7 @@ export default function LogInwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Originated By"
+                label={t('lbl_originated_by')}
                 value={originatedBy}
                 onChange={(e) => setOriginatedBy(e.target.value)}
               >
@@ -552,7 +554,7 @@ export default function LogInwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Folder ID"
+                label={t('lbl_folder_id')}
                 value={folderId}
                 onChange={(e) => handleFolderIdChange(e.target.value)}
               >
@@ -569,7 +571,7 @@ export default function LogInwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Folder Name"
+                label={t('lbl_folder_name')}
                 value={folderName}
                 onChange={(e) => handleFolderNameChange(e.target.value)}
               >
@@ -597,7 +599,7 @@ export default function LogInwardPage() {
             <Grid item xs={12} sm={6}>
               <Box sx={{ border: '1px solid #E8EAED', borderRadius: 2, p: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                  <Typography variant="subtitle2" color="text.secondary">Assign To (Officers):</Typography>
+                  <Typography variant="subtitle2" color="text.secondary">{t('lbl_assign_to')} (Officers):</Typography>
                   <Button size="small" startIcon={<AddIcon />} onClick={() => setAssignDialogOpen(true)}>Add</Button>
                 </Box>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>

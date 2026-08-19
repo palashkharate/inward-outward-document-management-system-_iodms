@@ -27,6 +27,7 @@ import CelebrationIcon from '@mui/icons-material/Celebration';
 import CakeIcon from '@mui/icons-material/Cake';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
+import { useTerminology } from '../TerminologyContext.jsx';
 import {
   BarChart,
   Bar,
@@ -45,6 +46,7 @@ const COLORS = ['#1A73E8', '#34A853', '#FBBC04', '#EA4335', '#00897B', '#8E24AA'
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { t } = useTerminology();
   const navigate = useNavigate();
   const [birthdays, setBirthdays] = useState([]);
   const [showBirthdayOverlay, setShowBirthdayOverlay] = useState(false);
@@ -179,13 +181,13 @@ export default function DashboardPage() {
       {/* Stats Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Inward This Year" value={stats?.total_inward_this_year} color="#1A73E8" icon={<InputIcon fontSize="large" />} />
+          <StatCard title={t('lbl_inward_this_year')} value={stats?.total_inward_this_year} color="#1A73E8" icon={<InputIcon fontSize="large" />} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Outward This Year" value={stats?.total_outward_this_year} color="#34A853" icon={<FolderSpecialIcon fontSize="large" />} />
+          <StatCard title={t('lbl_outward_this_year')} value={stats?.total_outward_this_year} color="#34A853" icon={<FolderSpecialIcon fontSize="large" />} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Active Drafts" value={stats?.total_active_drafts} color="#FBBC04" icon={<DescriptionIcon fontSize="large" />} />
+          <StatCard title={t('lbl_active_drafts')} value={stats?.total_active_drafts} color="#FBBC04" icon={<DescriptionIcon fontSize="large" />} />
         </Grid>
         {user?.role === 'Admin' ? (
            <Grid item xs={12} sm={6} md={3}>

@@ -64,6 +64,7 @@ import LoginPage from './pages/LoginPage.jsx';
 import AuditorView from './pages/AuditorView.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ComposeOutwardPage from './pages/ComposeOutwardPage.jsx';
+import { TerminologyProvider, useTerminology } from './TerminologyContext.jsx';
 import DraftsDispatchPage from './pages/DraftsDispatchPage.jsx';
 import LogInwardPage from './pages/LogInwardPage.jsx';
 import InwardRegisterPage from './pages/InwardRegisterPage.jsx';
@@ -230,11 +231,11 @@ function AppContent() {
   // Navigation Items
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', roles: ['User', 'Admin'] },
-    { text: 'Compose Outward', icon: <CreateIcon />, path: '/compose-outward', roles: ['User', 'Admin'] },
-    { text: 'Drafts & Dispatch', icon: <DescriptionIcon />, path: '/drafts', roles: ['User', 'Admin'] },
-    { text: 'Outward Register', icon: <FolderSpecialIcon />, path: '/outward-register', roles: ['User', 'Admin'] },
-    { text: 'Log Inward', icon: <InputIcon />, path: '/log-inward', roles: ['User', 'Admin'] },
-    { text: 'Inward Register', icon: <LibraryBooksIcon />, path: '/inward-register', roles: ['User', 'Admin'] },
+    { text: t('lbl_compose_outward'), icon: <CreateIcon />, path: '/compose-outward', roles: ['User', 'Admin'] },
+    { text: t('lbl_drafts_dispatch'), icon: <DescriptionIcon />, path: '/drafts', roles: ['User', 'Admin'] },
+    { text: t('lbl_outward_register'), icon: <FolderSpecialIcon />, path: '/outward-register', roles: ['User', 'Admin'] },
+    { text: t('lbl_log_inward'), icon: <InputIcon />, path: '/log-inward', roles: ['User', 'Admin'] },
+    { text: t('lbl_inward_register'), icon: <LibraryBooksIcon />, path: '/inward-register', roles: ['User', 'Admin'] },
     { text: 'Address Book', icon: <ContactPhoneIcon />, path: '/address-book', roles: ['User', 'Admin'] },
     { text: 'Admin Panel', icon: <AdminPanelSettingsIcon />, path: '/admin', roles: ['Admin'] },
     { text: 'My Profile', icon: <AccountCircleIcon />, path: '/profile', roles: ['User', 'Admin'] },

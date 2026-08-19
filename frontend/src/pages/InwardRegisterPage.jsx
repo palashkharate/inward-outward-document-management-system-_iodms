@@ -36,6 +36,7 @@ import WarningIcon from '@mui/icons-material/Warning';
 import HistoryIcon from '@mui/icons-material/History';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useAuth } from '../App.jsx';
+import { useTerminology } from '../TerminologyContext.jsx';
 import EditHistoryModal from '../components/EditHistoryModal.jsx';
 import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
 import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
@@ -99,15 +100,15 @@ function InwardRow({ row, onAction, onViewFile, setTreeDocId }) {
               </Typography>
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12} sm={3}>
-                  <Typography variant="caption" color="text.secondary">Folder Name:</Typography>
+                  <Typography variant="caption" color="text.secondary">{t('lbl_folder_name')}:</Typography>
                   <Typography variant="body2">{row.folder_name}</Typography>
                 </Grid>
                 <Grid item xs={12} sm={3}>
-                  <Typography variant="caption" color="text.secondary">Originated By:</Typography>
+                  <Typography variant="caption" color="text.secondary">{t('lbl_originated_by')}:</Typography>
                   <Typography variant="body2">{row.originated_by || 'Not specified'}</Typography>
                 </Grid>
                 <Grid item xs={12} sm={3}>
-                  <Typography variant="caption" color="text.secondary">Assign To:</Typography>
+                  <Typography variant="caption" color="text.secondary">{t('lbl_assign_to')}:</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
                     {row.assign_to.length === 0 ? '-' : row.assign_to.map(u => (
                       <Chip key={u} label={u} size="small" />
@@ -223,6 +224,7 @@ function InwardRow({ row, onAction, onViewFile, setTreeDocId }) {
 
 export default function InwardRegisterPage() {
   const { user } = useAuth();
+  const { t } = useTerminology();
   const [results, setResults] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -396,7 +398,7 @@ export default function InwardRegisterPage() {
           <CardContent sx={{ p: 2 }}>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={3}>
-                <TextField select fullWidth size="small" label="Folder" value={searchFolder} onChange={(e) => setSearchFolder(e.target.value)}>
+                <TextField select fullWidth size="small" label={t('lbl_folder')} value={searchFolder} onChange={(e) => setSearchFolder(e.target.value)}>
                   <MenuItem value="">-- All --</MenuItem>
                   {foldersList.map(f => <MenuItem key={f.folder_id} value={f.folder_id}>{f.folder_name}</MenuItem>)}
                 </TextField>
@@ -416,16 +418,16 @@ export default function InwardRegisterPage() {
               </Grid>
               
               <Grid item xs={12} sm={3}>
-                <TextField select fullWidth size="small" label="Assign To" value={searchAssignTo} onChange={(e) => setSearchAssignTo(e.target.value)}>
+                <TextField select fullWidth size="small" label={t('lbl_assign_to')} value={searchAssignTo} onChange={(e) => setSearchAssignTo(e.target.value)}>
                   <MenuItem value="">-- All --</MenuItem>
                   {usersList.map(u => <MenuItem key={u.user_id} value={u.user_id}>{u.name}</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={3}>
-                <TextField fullWidth size="small" label="Received From" value={searchReceivedFrom} onChange={(e) => setSearchReceivedFrom(e.target.value)} />
+                <TextField fullWidth size="small" label={t('lbl_received_from')} value={searchReceivedFrom} onChange={(e) => setSearchReceivedFrom(e.target.value)} />
               </Grid>
               <Grid item xs={12} sm={3}>
-                <TextField fullWidth size="small" label="Originated By" value={searchOriginatedBy} onChange={(e) => setSearchOriginatedBy(e.target.value)} />
+                <TextField fullWidth size="small" label={t('lbl_originated_by')} value={searchOriginatedBy} onChange={(e) => setSearchOriginatedBy(e.target.value)} />
               </Grid>
               <Grid item xs={12} sm={3}>
                 <TextField fullWidth size="small" label="Subject" value={searchSubject} onChange={(e) => setSearchSubject(e.target.value)} />
@@ -445,12 +447,12 @@ export default function InwardRegisterPage() {
           <TableHead>
             <TableRow>
               <TableCell width={50} />
-              <TableCell sx={{ fontWeight: 600 }}>Inward No.</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_inward_no')}</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Date of Receipt</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Letter Ref No.</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Letter Date</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Folder ID</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Received From</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_folder_id')}</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_received_from')}</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Subject</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>

@@ -57,6 +57,7 @@ class SystemSettingsSchema(BaseModel):
     iodms_root_path: str
     iodms_lan_share_path: Optional[str] = ""
     cutover_override_date: Optional[str] = None
+    terminology_mode: Optional[str] = "canonical"  # FR-200: 'canonical' or 'legacy'
 
 class AllowedIPCreate(BaseModel):
     ip_address: str
@@ -876,7 +877,8 @@ def update_settings(payload: SystemSettingsSchema):
     settings = {
         "iodms_root_path": payload.iodms_root_path,
         "iodms_lan_share_path": (payload.iodms_lan_share_path or "").strip(),
-        "cutover_override_date": payload.cutover_override_date
+        "cutover_override_date": payload.cutover_override_date,
+        "terminology_mode": payload.terminology_mode or "canonical"
     }
     
     # Try to make sure new path directory exists

@@ -45,10 +45,12 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { useAuth } from '../App.jsx';
+import { useTerminology } from '../TerminologyContext.jsx';
 
 
 export default function AdminPage() {
   const { user } = useAuth();
+  const { t, mode, setMode } = useTerminology();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
   
@@ -913,10 +915,10 @@ export default function AdminPage() {
           {/* Subtabs for Master list types */}
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2.5 }}>
             <Tabs value={masterSubtab} onChange={(e, val) => setMasterSubtab(val)} size="small" textColor="secondary" indicatorColor="secondary">
-              <Tab label="Folder Categories" />
-              <Tab label="Address Groups" />
-              <Tab label="Received From Origins" />
-              <Tab label="Originated By Senders" />
+              <Tab label={t('lbl_folder_categories')} />
+              <Tab label={t('lbl_address_groups')} />
+              <Tab label={t('lbl_received_from_origins')} />
+              <Tab label={t('lbl_originated_by_senders')} />
             </Tabs>
           </Box>
 
@@ -933,8 +935,8 @@ export default function AdminPage() {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Folder ID</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Folder Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('lbl_folder_id')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('lbl_folder_name')}</TableCell>
                     <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -1105,6 +1107,25 @@ export default function AdminPage() {
                 </Typography>
               </Grid>
 
+              {/* FR-200: Terminology Mode Toggle */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                  6. UI Terminology Preference:
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Choose between modern canonical terms (Folder ID, Compose Outward) or legacy terms (File Number, Create File) used across the entire application.
+                </Typography>
+                <TextField
+                  select
+                  size="small"
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value)}
+                  sx={{ minWidth: 300 }}
+                >
+                  <MenuItem value="canonical">Canonical / Modern (Folder ID, Compose Outward, Dispatch)</MenuItem>
+                  <MenuItem value="legacy">Legacy / Classic (File Number, Create File, Finalise)</MenuItem>
+                </TextField>
+              </Grid>
               <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
                 <Button variant="contained" color="primary" startIcon={<SaveIcon />} onClick={handleSaveSettings} sx={{ px: 4 }}>
                   Save Configuration

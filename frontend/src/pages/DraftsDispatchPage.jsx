@@ -38,6 +38,7 @@ import FileUploadIcon from '@mui/icons-material/FileUpload';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useAuth } from '../App.jsx';
+import { useTerminology } from '../TerminologyContext.jsx';
 import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
 import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
 import EditHistoryModal from '../components/EditHistoryModal.jsx';
@@ -259,6 +260,7 @@ function DraftRow({ row, onAction, user, onViewFile }) {
 
 export default function DraftsDispatchPage() {
   const { user } = useAuth();
+  const { t } = useTerminology();
   const navigate = useNavigate();
   const [drafts, setDrafts] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -275,8 +277,8 @@ export default function DraftsDispatchPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const draftSearchFields = [
     { value: 'subject', label: 'Subject' },
-    { value: 'folder_id', label: 'Folder ID' },
-    { value: 'prepared_by', label: 'Prepared By' }
+    { value: 'folder_id', label: t('lbl_folder_id') },
+    { value: 'prepared_by', label: t('lbl_prepared_by') }
   ];
 
   // FR-052 Re-upload State
@@ -509,13 +511,13 @@ export default function DraftsDispatchPage() {
           <TableHead>
             <TableRow>
               <TableCell width={50} />
-              <TableCell sx={{ fontWeight: 600 }}>Outward No.</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Folder ID</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Folder Name</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_outward_no')}</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_folder_id')}</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_folder_name')}</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Address To</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Subject</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Prepared By</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_prepared_by')}</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Lock Status</TableCell>
             </TableRow>
           </TableHead>

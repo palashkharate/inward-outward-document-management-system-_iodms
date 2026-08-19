@@ -29,6 +29,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useAuth } from '../App.jsx';
+import { useTerminology } from '../TerminologyContext.jsx';
 import DocumentLinkPicker from '../components/DocumentLinkPicker.jsx';
 
 const MIN_DOCUMENT_DATE = '1947-08-15';
@@ -36,6 +37,7 @@ const todayIsoDate = () => new Date().toISOString().split('T')[0];
 
 export default function ComposeOutwardPage() {
   const { user } = useAuth();
+  const { t } = useTerminology();
   const navigate = useNavigate();
   const { folder_id, year, outward_no } = useParams();
   const isModifyMode = !!outward_no;
@@ -428,7 +430,7 @@ export default function ComposeOutwardPage() {
       {/* Page header and action toolbar */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight={800}>
-          {isModifyMode ? 'Modify Outward Record' : 'Compose Outward Document'}
+          {isModifyMode ? t('lbl_modify_outward_title') : t('lbl_compose_outward_title')}
         </Typography>
         
         {/* FR-030: New Button */}
@@ -473,7 +475,7 @@ export default function ComposeOutwardPage() {
             <Grid item xs={12} sm={3}>
               <TextField
                 fullWidth
-                label="Outward No."
+                label={t('lbl_outward_no')}
                 value={isModifyMode ? outNo : 'Assigned on Dispatch'}
                 InputProps={{ readOnly: true }}
                 helperText={isModifyMode ? '' : 'Official number is issued only when draft is dispatched.'}
@@ -510,7 +512,7 @@ export default function ComposeOutwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Prepared By"
+                label={t('lbl_prepared_by')}
                 value={preparedBy}
                 onChange={(e) => setPreparedBy(e.target.value)}
               >
@@ -527,7 +529,7 @@ export default function ComposeOutwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Folder ID"
+                label={t('lbl_folder_id')}
                 value={folderId}
                 onChange={(e) => handleFolderIdChange(e.target.value)}
               >
@@ -544,7 +546,7 @@ export default function ComposeOutwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Folder Name"
+                label={t('lbl_folder_name')}
                 value={folderName}
                 onChange={(e) => handleFolderNameChange(e.target.value)}
               >
@@ -588,7 +590,7 @@ export default function ComposeOutwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Address Group"
+                label={t('lbl_address_group')}
                 value={addressGroup}
                 onChange={(e) => {
                   setAddressGroup(e.target.value);
@@ -609,7 +611,7 @@ export default function ComposeOutwardPage() {
               <TextField
                 select
                 fullWidth
-                label="Address To"
+                label={t('lbl_address_to')}
                 value={addressTo}
                 onChange={(e) => setAddressTo(e.target.value)}
                 disabled={!addressGroup}

@@ -37,6 +37,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import DownloadIcon from '@mui/icons-material/Download';
 import { useAuth } from '../App.jsx';
+import { useTerminology } from '../TerminologyContext.jsx';
 import EditHistoryModal from '../components/EditHistoryModal.jsx';
 import UnifiedSearchBar from '../components/UnifiedSearchBar.jsx';
 import DocumentViewerModal from '../components/DocumentViewerModal.jsx';
@@ -228,6 +229,7 @@ function OutwardRow({ row, onAction, onViewFile, onDownloadFile, setTreeDocId })
 
 export default function OutwardRegisterPage() {
   const { user } = useAuth();
+  const { t } = useTerminology();
   const [results, setResults] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -435,7 +437,7 @@ export default function OutwardRegisterPage() {
           <CardContent sx={{ p: 2 }}>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={3}>
-                <TextField select fullWidth size="small" label="Folder" value={searchFolder} onChange={(e) => setSearchFolder(e.target.value)}>
+                <TextField select fullWidth size="small" label={t('lbl_folder')} value={searchFolder} onChange={(e) => setSearchFolder(e.target.value)}>
                   <MenuItem value="">-- All --</MenuItem>
                   {folderTypes.map(f => <MenuItem key={f.folder_id} value={f.folder_id}>{f.folder_name}</MenuItem>)}
                 </TextField>
@@ -455,13 +457,13 @@ export default function OutwardRegisterPage() {
               </Grid>
               
               <Grid item xs={12} sm={3}>
-                <TextField select fullWidth size="small" label="Prepared By" value={searchPreparedBy} onChange={(e) => setSearchPreparedBy(e.target.value)}>
+                <TextField select fullWidth size="small" label={t('lbl_prepared_by')} value={searchPreparedBy} onChange={(e) => setSearchPreparedBy(e.target.value)}>
                   <MenuItem value="">-- All --</MenuItem>
                   {usersList.map(u => <MenuItem key={u.user_id} value={u.user_id}>{u.name}</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={3}>
-                <TextField fullWidth size="small" label="Address To" value={searchAddressTo} onChange={(e) => setSearchAddressTo(e.target.value)} />
+                <TextField fullWidth size="small" label={t('lbl_address_to')} value={searchAddressTo} onChange={(e) => setSearchAddressTo(e.target.value)} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField fullWidth size="small" label="Subject" value={searchSubject} onChange={(e) => setSearchSubject(e.target.value)} />
@@ -481,14 +483,14 @@ export default function OutwardRegisterPage() {
           <TableHead>
             <TableRow>
               <TableCell width={50} />
-              <TableCell sx={{ fontWeight: 600 }}>Outward No.</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Folder ID</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Folder Name</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_outward_no')}</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_folder_id')}</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_folder_name')}</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Issuing Date</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Address To</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_address_to')}</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>CC To</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Subject</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Prepared By</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{t('lbl_prepared_by')}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
