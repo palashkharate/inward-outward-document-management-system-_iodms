@@ -9,6 +9,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 
 import models
@@ -1274,25 +1275,28 @@ def get_outward_register(
     ).all()
     pending_keys = {pd.record_id for pd in pending_deletes} # format "folder_id:year:outward_no"
 
+    # FR-090: Batch fetch relationships to prevent N+1 queries
+    folder_ids = list(set([r.folder_id for r in results]))
+    folders = db.query(models.FolderType).filter(models.FolderType.folder_id.in_(folder_ids)).all()
+    folder_map = {f.folder_id: f.folder_name for f in folders}
+
+    address_ids = set()
+    for r in results:
+        address_ids.update(r.address_to or [])
+        address_ids.update(r.cc_to or [])
+    
+    address_map = {}
+    if address_ids:
+        addresses = db.query(models.AddressBook).filter(models.AddressBook.address_id.in_(list(address_ids))).all()
+        address_map = {a.address_id: a.name for a in addresses}
+
     output = []
     for r in results:
         key = f"{r.folder_id}:{r.year}:{r.outward_no}"
-        folder = db.query(models.FolderType).filter(models.FolderType.folder_id == r.folder_id).first()
-        folder_name = folder.folder_name if folder else ""
+        folder_name = folder_map.get(r.folder_id, "")
 
-        # Fetch Address To recipient names
-        address_to_names = []
-        for a_id in r.address_to:
-            addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == a_id).first()
-            if addr:
-                address_to_names.append(addr.name)
-        
-        # Fetch CC names
-        cc_to_names = []
-        for c_id in r.cc_to:
-            addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == c_id).first()
-            if addr:
-                cc_to_names.append(addr.name)
+        address_to_names = [address_map[a_id] for a_id in (r.address_to or []) if a_id in address_map]
+        cc_to_names = [address_map[c_id] for c_id in (r.cc_to or []) if c_id in address_map]
 
         output.append({
             "outward_no": r.outward_no,

@@ -96,19 +96,19 @@ class InwardRegister(Base):
     inward_no = Column(String(10), primary_key=True)
     folder_id = Column(String(50), ForeignKey("folder_types.folder_id", onupdate="CASCADE"), primary_key=True)
     year = Column(Integer, primary_key=True)
-    receiving_date = Column(Date, nullable=False, server_default=func.current_date())
-    inward_letter_no = Column(String(255))
+    receiving_date = Column(Date, nullable=False, server_default=func.current_date(), index=True)
+    inward_letter_no = Column(String(255), index=True)
     inward_date = Column(Date)
     received_from = Column(String(255))
     originated_by = Column(String(255))
-    subject = Column(Text)
+    subject = Column(Text, index=True)
     assign_to = Column(ARRAY(String(100)), default=[])
     cc_sent_to = Column(ARRAY(Integer), default=[])
     remarks = Column(Text)
     actioned_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
     document_type = Column(String(50), nullable=False)  # 'Query', 'Snag', 'File'
     scanned_format = Column(String(50))  # FR-063: Image/Doc/PDF
-    status = Column(String(50), nullable=False, default="Active")  # 'Active', 'Not Active', 'Permanently Deleted'
+    status = Column(String(50), nullable=False, default="Active", index=True)  # 'Active', 'Not Active', 'Permanently Deleted'
     attachment_path = Column(String(500)) # legacy single file
     attachment_original_ext = Column(String(50)) # legacy single file
     attachment_paths = Column(ARRAY(String(500)), default=[]) # FR-170
@@ -131,19 +131,19 @@ class OutwardRegister(Base):
     outward_no = Column(String(10), primary_key=True)
     folder_id = Column(String(50), ForeignKey("folder_types.folder_id", onupdate="CASCADE"), primary_key=True)
     year = Column(Integer, primary_key=True)
-    issuing_date = Column(Date, nullable=False)
+    issuing_date = Column(Date, nullable=False, index=True)
     address_to = Column(ARRAY(Integer), default=[])
     cc_to = Column(ARRAY(Integer), default=[])
-    subject = Column(Text)
+    subject = Column(Text, index=True)
     remarks = Column(Text)
-    prepared_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
+    prepared_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"), index=True)
     actioned_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
     document_path = Column(String(500), nullable=False)
     template_type = Column(String(100), nullable=False)  # 'Fax_With_GM_Sig', 'Fax_Without_GM_Sig', 'Internal_Letter'
     linked_documents = Column(ARRAY(String(255)), default=[]) # FR-171
     attachment_paths = Column(ARRAY(String(500)), default=[]) # FR-170b
     document_body = Column(JSONB, nullable=True) # FR-052
-    status = Column(String(50), nullable=False, default="Active")  # 'Active', 'Not Active', 'Permanently Deleted'
+    status = Column(String(50), nullable=False, default="Active", index=True)  # 'Active', 'Not Active', 'Permanently Deleted'
     # FR-160: Timestamps
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
     updated_at = Column(TIMESTAMP, nullable=True, onupdate=func.current_timestamp())
@@ -165,12 +165,12 @@ class DraftFile(Base):
     document_body = Column(JSONB, nullable=True) # FR-052
     outward_no = Column(String(10), nullable=False)
     folder_id = Column(String(50), ForeignKey("folder_types.folder_id", onupdate="CASCADE"))
-    issuing_date = Column(Date, nullable=False)
+    issuing_date = Column(Date, nullable=False, index=True)
     address_to = Column(ARRAY(Integer), default=[])
     cc_to = Column(ARRAY(Integer), default=[])
-    subject = Column(Text)
+    subject = Column(Text, index=True)
     remarks = Column(Text)
-    prepared_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
+    prepared_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"), index=True)
     actioned_by = Column(String(100), ForeignKey("users.user_id", onupdate="CASCADE"))
     template_type = Column(String(100), nullable=False)  # 'Fax_With_GM_Sig', 'Fax_Without_GM_Sig', 'Internal_Letter'
     is_locked = Column(Boolean, nullable=False, default=False)

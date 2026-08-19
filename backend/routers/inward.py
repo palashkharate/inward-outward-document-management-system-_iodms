@@ -499,12 +499,15 @@ def get_inward_register(
     ).all()
     pending_keys = {pd.record_id for pd in pending_deletes} # format "folder_id:year:inward_no"
 
+    # Batch fetch folders to prevent N+1 queries
+    folder_ids = list(set([r.folder_id for r in results]))
+    folders = db.query(models.FolderType).filter(models.FolderType.folder_id.in_(folder_ids)).all()
+    folder_map = {f.folder_id: f.folder_name for f in folders}
+
     output = []
     for r in results:
         key = f"{r.folder_id}:{r.year}:{r.inward_no}"
-        # Fetch folder name
-        folder = db.query(models.FolderType).filter(models.FolderType.folder_id == r.folder_id).first()
-        folder_name = folder.folder_name if folder else ""
+        folder_name = folder_map.get(r.folder_id, "")
         
         output.append({
             "inward_no": r.inward_no,
