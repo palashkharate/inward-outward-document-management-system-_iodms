@@ -256,22 +256,38 @@ def test_draft_locking(client, db):
 
 
 # FR-052, EIR-003, EIR-004: Test LAN path details for direct Word editing
+
+class MockRequest:
+    def __init__(self):
+        class URL:
+            scheme = "http"
+        self.url = URL()
+        self.headers = {"host": "localhost:8000"}
+
 def test_lan_word_open_info(monkeypatch):
     monkeypatch.setattr("routers.outward.get_iodms_lan_share_path", lambda: r"\\Server\IODMS_DATA")
 
-    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc")
+    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc", 123, MockRequest())
 
     assert open_info["lan_shared_path"] == r"\\Server\IODMS_DATA\Drafts\2026\Su-30\draft-admin.doc"
     assert open_info["lan_file_uri"] == "file://Server/IODMS_DATA/Drafts/2026/Su-30/draft-admin.doc"
     assert open_info["word_launcher_uri"] == "iodms-word://open?path=%5C%5CServer%5CIODMS_DATA%5CDrafts%5C2026%5CSu-30%5Cdraft-admin.doc"
-    assert open_info["word_open_uri"].startswith("ms-word:ofe|u|file://")
-    assert "Drafts/2026/Su-30/draft-admin.doc" in open_info["word_open_uri"]
+    assert open_info["word_open_uri"].startswith("ms-word:ofe|u|http://")
+    assert "drafts/123/draft-admin.doc" in open_info["word_open_uri"]
 
+
+
+class MockRequest:
+    def __init__(self):
+        class URL:
+            scheme = "http"
+        self.url = URL()
+        self.headers = {"host": "localhost:8000"}
 
 def test_lan_word_open_info_without_share(monkeypatch):
     monkeypatch.setattr("routers.outward.get_iodms_lan_share_path", lambda: "")
 
-    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc")
+    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc", 123, MockRequest())
 
     assert open_info == {
         "lan_shared_path": None,
@@ -284,7 +300,7 @@ def test_lan_word_open_info_without_share(monkeypatch):
 def test_local_word_open_info(monkeypatch):
     monkeypatch.setattr("routers.outward.get_iodms_lan_share_path", lambda: r"C:\IODMS_DATA")
 
-    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc")
+    open_info = build_lan_document_open_info("Drafts/2026/Su-30/draft-admin.doc", 123, MockRequest())
 
     assert open_info["lan_shared_path"] == r"C:\IODMS_DATA\Drafts\2026\Su-30\draft-admin.doc"
     assert open_info["lan_file_uri"] == "file:///C:/IODMS_DATA/Drafts/2026/Su-30/draft-admin.doc"

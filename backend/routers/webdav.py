@@ -3,8 +3,7 @@ import datetime
 from fastapi import APIRouter, Request, Response, HTTPException, Depends
 from sqlalchemy.orm import Session
 import models
-from database import get_db
-from config import get_iodms_root_path
+from database import get_db, get_iodms_root_path
 
 router = APIRouter()
 
