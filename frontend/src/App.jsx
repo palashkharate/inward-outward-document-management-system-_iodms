@@ -213,6 +213,7 @@ export const useAuth = () => useContext(AuthContext);
 
 function AppContent() {
   const { user, logout } = useAuth();
+  const { t } = useTerminology();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -507,11 +508,13 @@ export default function App() {
   return (
     <ThemeProvider theme={lightTheme}>
       <CssBaseline />
+      <TerminologyProvider>
       <AuthContext.Provider value={{ user, login, logout }}>
         <BrowserRouter>
           <AppContent />
         </BrowserRouter>
       </AuthContext.Provider>
+      </TerminologyProvider>
     </ThemeProvider>
   );
 }
