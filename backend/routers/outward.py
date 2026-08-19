@@ -6,7 +6,7 @@ import uuid
 from urllib.parse import quote
 from .link_utils import sync_bidirectional_links
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -71,7 +71,7 @@ def check_draft_locks(db: Session):
     db.commit()
 
 # FR-052: Build the direct LAN path officers open in Microsoft Word.
-def build_lan_document_open_info(relative_path: str) -> dict:
+def build_lan_document_open_info(relative_path: str, draft_id: int, request: Request) -> dict:
     lan_root = get_iodms_lan_share_path()
     if not lan_root or not relative_path:
         return {
@@ -93,7 +93,7 @@ def build_lan_document_open_info(relative_path: str) -> dict:
         "lan_shared_path": lan_shared_path,
         "lan_file_uri": lan_file_uri,
         "word_launcher_uri": f"iodms-word://open?path={quote(lan_shared_path, safe='')}",
-        "word_open_uri": f"ms-word:ofe|u|{lan_file_uri}"
+        "word_open_uri": f"ms-word:ofe|u|{request.url.scheme}://{request.headers.get('host', 'localhost')}/api/webdav/drafts/{draft_id}/{os.path.basename(lan_shared_path.replace('\\\\\\\\', '/').replace('\\', '/'))}"
     }
 
 def log_edit(db: Session, record_type: str, record_id: str, action: str, user_id: str, changes: dict = None):
@@ -885,7 +885,7 @@ def get_drafts(db: Session = Depends(get_db)):
             addr = db.query(models.AddressBook).filter(models.AddressBook.address_id == d.address_to[0]).first()
             recipient_name = addr.name if addr else ""
 
-        lan_open_info = build_lan_document_open_info(d.file_path)
+        lan_open_info = build_lan_document_open_info(d.file_path, d.draft_id, request)
         output.append({
             "draft_id": d.draft_id,
             "file_path": d.file_path,
@@ -916,14 +916,14 @@ def get_drafts(db: Session = Depends(get_db)):
 
 # FR-052: Get specific draft
 @router.get("/drafts/{draft_id}")
-def get_draft(draft_id: int, db: Session = Depends(get_db)):
+def get_draft(draft_id: int, request: Request, db: Session = Depends(get_db)):
     """Retrieves a specific draft for editing."""
     draft = db.query(models.DraftFile).filter(models.DraftFile.draft_id == draft_id).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
     
     # Format the payload for the frontend
-    lan_open_info = build_lan_document_open_info(draft.file_path)
+    lan_open_info = build_lan_document_open_info(draft.file_path, draft.draft_id, request)
     return {
         "draft_id": draft.draft_id,
         "file_path": draft.file_path,
@@ -950,6 +950,7 @@ def get_draft(draft_id: int, db: Session = Depends(get_db)):
 # FR-052: Lock draft file for editing
 @router.put("/drafts/{draft_id}/lock")
 def lock_draft(
+    request: Request,
     draft_id: int,
     payload: Optional[DraftLockAction] = None,
     db: Session = Depends(get_db),
@@ -986,7 +987,7 @@ def lock_draft(
     })
     
     db.commit()
-    lan_open_info = build_lan_document_open_info(draft.file_path)
+    lan_open_info = build_lan_document_open_info(draft.file_path, draft.draft_id, request)
     return {
         "message": "Draft file locked for editing",
         "file_path": draft.file_path,

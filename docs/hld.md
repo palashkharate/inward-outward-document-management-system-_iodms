@@ -6,7 +6,7 @@ This document provides a high-level overview of the structure and flow of the IO
 
 ## 1. System Architecture
 
-The IODMS is built using a classic **Client-Server Architecture**. Recently updated to a **Unified Port Architecture**, the system serves both the frontend web app and backend API from a single FastAPI server on Port 80, ideal for strict firewall defense networks.
+The IODMS is built using a classic **Client-Server Architecture**. Recently updated to a **Unified Port Architecture**, the system serves both the frontend web app and backend API from a single FastAPI server on Port 80, with CORS configured to allow `192.168.*` (the defense LAN), ideal for strict firewall defense networks.
 
 ```mermaid
 graph TD
@@ -71,11 +71,11 @@ IODMS_DATA/
 ├── Outward/
 │   └── {Year}/
 │       └── {Folder ID}/
-│           └── 001.doc, 002.doc    <-- Named by sequential number, always .doc extension
+│           └── 001.docx, 002.docx    <-- Named by sequential number, always .docx extension
 └── Drafts/
     └── {Year}/
         └── {Folder ID}/
-            └── fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc <-- Draft filenames (never renumbered)
+            └── fax-{UserID}-{YYYYMMDD}-{HHMMSS}.docx <-- Draft filenames (never renumbered)
 ```
 
 ### Numbering Rules
@@ -106,8 +106,8 @@ sequenceDiagram
     API-->>UI: Reserved Outward No = 004
     User->>UI: Fills form (Subject, Prepared By, Address, CC, etc.) & Clicks "Save Draft"
     UI->>API: POST /api/outward/draft (Form Data + Reserved No)
-    API->>API: Generate draft filename: fax-U01-20260621-180000.doc
-    API->>FS: Create .doc file containing placeholder text and metadata
+    API->>API: Generate draft filename: fax-U01-20260621-180000.docx
+    API->>FS: Create .docx template using python-docx
     API->>DB: Insert record into draft_files table (is_locked=false)
     API-->>UI: Draft saved successfully!
     UI->>User: Clear form, show success message
@@ -160,7 +160,7 @@ sequenceDiagram
     API->>DB: Query max outward_no in outward_register for Folder ID & Year
     DB-->>API: Max is 003
     API->>API: Determine sequential outward number = 004
-    API->>FS: Rename & Move file from Drafts/ to Outward/2026/Su-30/004.doc
+    API->>FS: Rename & Move file from Drafts/ to Outward/2026/Su-30/004.docx
     API->>DB: Insert record into outward_register (outward_no=004)
     API->>DB: Delete draft record from draft_files
     API-->>UI: Dispatched successfully!

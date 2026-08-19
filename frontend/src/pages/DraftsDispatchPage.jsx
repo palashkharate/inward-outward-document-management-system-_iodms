@@ -114,7 +114,7 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                 <Grid item xs={12} sm={4}>
                   <Typography variant="caption" color="text.secondary">Document Format:</Typography>
                   <Typography variant="body2">
-                    {row.file_path?.toLowerCase().endsWith('.pdf') ? 'PDF' : 'MS Word 97-2003 compatible (.doc)'}
+                    {row.file_path?.toLowerCase().endsWith('.pdf') ? 'PDF' : row.file_path?.toLowerCase().endsWith('.doc') ? 'MS Word Legacy (.doc)' : 'MS Word (.docx)'}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} sm={4}>
@@ -186,15 +186,7 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                   Open in Word
                 </Button>
 
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  startIcon={<EditIcon />}
-                  onClick={() => handleAction('online_edit', row)}
-                  disabled={row.is_pending_deletion || (row.is_locked && row.locked_by !== user?.user_id)}
-                >
-                  Edit Online
-                </Button>
+
 
                 {/* 2. Dispatch (FR-051, FR-054) */}
                 <Button
@@ -229,6 +221,17 @@ function DraftRow({ row, onAction, user, onViewFile }) {
                   </Button>
                 )}
                 
+                {/* Edit Details (FR-058) */}
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<EditIcon />}
+                  onClick={() => handleAction('edit_details', row)}
+                  disabled={row.is_pending_deletion}
+                >
+                  Edit Details
+                </Button>
+
                 {/* Edit History (FR-058) */}
                 <Button
                   variant="outlined"
@@ -336,8 +339,7 @@ export default function DraftsDispatchPage() {
         if (wordWindow) wordWindow.close();
         setErrorMsg(err.response?.data?.detail || 'Failed to lock draft for Word editing.');
       }
-    } else if (action === 'online_edit') {
-      navigate(`/draft-editor/${row.draft_id}`);
+
     } else if (action === 'release_lock') {
       try {
         // FR-053: Unlock draft
@@ -347,6 +349,8 @@ export default function DraftsDispatchPage() {
       } catch (err) {
         setErrorMsg('Failed to release lock.');
       }
+    } else if (action === 'edit_details') {
+      navigate(`/compose-outward/draft/${row.draft_id}`);
     } else if (action === 'dispatch') {
       setDispatchConfirmOpen(true);
     } else if (action === 'discard') {

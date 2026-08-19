@@ -115,6 +115,7 @@ CREATE TABLE outward_register (
 );
 COMMENT ON TABLE outward_register IS 'All finalised and dispatched outward documents';
 COMMENT ON COLUMN outward_register.outward_no IS 'Yearly-reset sequential number (001-999, then 1000+) per Folder ID';
+-- Note: Dispatched drafts are renamed to .docx (e.g. 001.docx) in the Outward register.
 
 -- 9. Draft Files Table (FR-042, FR-050, FR-052, FR-055)
 CREATE TABLE draft_files (
@@ -135,7 +136,7 @@ CREATE TABLE draft_files (
     year INTEGER NOT NULL,
     created_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-COMMENT ON TABLE draft_files IS 'Metadata and lock status for outward drafts awaiting dispatch';
+COMMENT ON TABLE draft_files IS 'Metadata and lock status for outward drafts awaiting dispatch. Legacy .doc drafts are automatically upgraded to .docx on save.';
 COMMENT ON COLUMN draft_files.outward_no IS 'Pre-assigned outward number reserved during creation';
 COMMENT ON COLUMN draft_files.is_locked IS 'Lock toggle to prevent concurrent editing of the draft document file';
 
@@ -186,7 +187,7 @@ Direct Microsoft Word editing uses two separate paths:
 | `iodms_root_path` | FastAPI server process | Local/server filesystem path used for creating, reading, moving, and deleting files. |
 | `iodms_lan_share_path` | Officer PCs through the browser UI | Client-visible UNC share path used to open the same draft files in Microsoft Word. |
 
-For example, the server may write to `D:\IODMS_DATA`, while officer PCs open the same files through `\\Server\IODMS_DATA`. The backend stores only relative document paths such as `Drafts/2026/Su-30/draft-admin.doc`; API responses combine that relative path with `iodms_lan_share_path` and return both `lan_shared_path` and `word_open_uri`.
+For example, the server may write to `D:\IODMS_DATA`, while officer PCs open the same files through `\\Server\IODMS_DATA`. The backend stores only relative document paths such as `Drafts/2026/Su-30/draft-admin.docx`; API responses combine that relative path with `iodms_lan_share_path` and return both `lan_shared_path` and `word_open_uri`.
 
 The direct edit flow remains pessimistically locked:
 
@@ -202,7 +203,7 @@ Admin configures `iodms_lan_share_path` from Admin -> System Settings. If it is 
 inword outword folder/
 │
 ├── backend/
-│   ├── main.py                     # Entry point for the FastAPI server (defines CORS, includes routers)
+│   ├── main.py                     # Entry point for the FastAPI server (defines CORS allowing 192.168.* LAN, includes routers)
 │   ├── database.py                 # Handles SQLAlchemy DB engine, session creation, and setting path configs
 │   ├── models.py                   # Declares SQLAlchemy ORM models for all 11 database tables
 │   ├── requirements.txt            # Python dependencies with pinned versions (NFR-011)
@@ -213,7 +214,7 @@ inword outword folder/
 │       ├── auth.py                 # Auth router: Handles login, logout, profile view, password resets
 │       ├── admin.py                # Admin router: User admin, deletions approval, master list CRUD, settings
 │       ├── inward.py               # Inward router: Log new inwards, file uploads, register search
-│       ├── outward.py              # Outward router: Draft creations, Word file generation, locking, dispatch
+│       ├── outward.py              # Outward router: Draft creations, python-docx file generation, legacy .doc upgrades, dispatch
 │       └── auditor.py              # Auditor router: Read-only register feeds requiring no session auth
 │
 ├── frontend/
@@ -229,7 +230,7 @@ inword outword folder/
 │           ├── AuditorView.jsx     # Read-only watermarked register tabs with print & copy disabled
 │           ├── DashboardPage.jsx   # Welcome view displaying birthday overlays
 │           ├── ComposeOutwardPage.jsx # Outward template composer form with auto folder bindings
-│           ├── DraftsDispatchPage.jsx # Draft registry list showing edit locking and final dispatch options
+│           ├── DraftsDispatchPage.jsx # Draft registry list showing edit locking, React frontend editor with letterhead context, and final dispatch options
 │           ├── LogInwardPage.jsx   # Inward entry capture form with attachment drag-and-drop zone
 │           ├── InwardRegisterPage.jsx # General search panel and paginated display list for inward logs
 │           ├── OutwardRegisterPage.jsx # General search panel and paginated display list for outward entries

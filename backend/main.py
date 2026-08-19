@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import models
 from database import engine
-from routers import auth, admin, inward, outward, auditor, dashboard
+from routers import auth, admin, inward, outward, auditor, dashboard, webdav
 
 # FR-011: Initialise database tables if they do not already exist on system startup.
 # This runs the SQL commands to create the tables in PostgreSQL.
@@ -86,6 +86,9 @@ app.include_router(outward.router, prefix="/api/outward", tags=["Outward Registe
 
 # Router for Auditor View (Module 0)
 app.include_router(auditor.router, prefix="/api/auditor", tags=["Auditor View"])
+
+# Router for WebDAV Document Editing (MS Word HTTP integration)
+app.include_router(webdav.router, prefix="/api/webdav", tags=["WebDAV"])
 
 # FR-NFR: Health check endpoint for monitoring
 @app.get("/api/health")

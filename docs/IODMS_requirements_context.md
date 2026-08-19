@@ -53,18 +53,18 @@ IODMS/
 ├── Outward/
 │   └── {Year}/
 │       └── {Folder ID}/
-│           └── 001, 002, 003 ... (cumulative; .doc)
+│           └── 001, 002, 003 ... (cumulative; .docx)
 ├── Drafts/
 │   └── {Year}/
 │       └── {Folder ID}/
-│           └── fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc
+│           └── fax-{UserID}-{YYYYMMDD}-{HHMMSS}.docx
 └── Database/   ← PostgreSQL data directory (managed by server)
 ```
 
 **Numbering Rules:**
 - Numbering resets to `001` on January 1 each year, per Folder ID, per register type (Inward and Outward are independent sequences)
 - Zero-padding is fixed to 3 digits up to `999` (i.e. `001`–`999`), then switches naturally to 4+ digits (`1000`, `1001`, …) to comply with legacy migration records
-- Draft filenames follow the format `fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc` and are **never renumbered**
+- Draft filenames follow the format `fax-{UserID}-{YYYYMMDD}-{HHMMSS}.docx` and are **never renumbered**
 - On Dispatch, a draft is renamed to the next sequential number in `Outward/{Year}/{FolderID}/` and moved there
 - Inward attachments are stored as their next sequential number but retain their original file extension (e.g. `003.pdf`, `004.jpg`)
 - The base path of the IODMS folder is configurable by Admin (to support future server migrations); default at deployment is `IODMS/` relative to the configured root
@@ -129,7 +129,7 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | `remarks` | TEXT | No character limit |
 | `prepared_by` | VARCHAR | User ID of officer on whose behalf document was prepared |
 | `actioned_by` | VARCHAR | User ID of officer who actually performed the action (for internal record) |
-| `document_path` | VARCHAR | Relative path to `.doc` file within IODMS folder |
+| `document_path` | VARCHAR | Relative path to `.docx` file within IODMS folder |
 | `template_type` | VARCHAR | ENUM: `Fax_With_GM_Sig`, `Fax_Without_GM_Sig`, `Internal_Letter` |
 | `year` | INTEGER | Derived from `issuing_date` |
 
@@ -156,7 +156,7 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | Column | Type | Notes |
 |---|---|---|
 | `draft_id` | SERIAL | Auto-generated |
-| `file_path` | VARCHAR | Relative path: `Drafts/{Year}/{FolderID}/fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc` |
+| `file_path` | VARCHAR | Relative path: `Drafts/{Year}/{FolderID}/fax-{UserID}-{YYYYMMDD}-{HHMMSS}.docx` |
 | `outward_no` | VARCHAR(10) | Pre-assigned outward number (generated on New in Drafts & Dispatch) |
 | `folder_id` | VARCHAR | FK → `folder_types.folder_id` |
 | `issuing_date` | DATE | Date picker value from Compose Outward form |
@@ -306,9 +306,9 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | FR-039 | **Selected Address Display** — below the dropdown, display the full address details (Name, Designation, Organisation, Address Line 1, Address Line 2, Fax, Email) of the selected Address To entry |
 | FR-040 | **CC** — multi-select from full address book; user may add multiple CC entries using a **"+ Add CC"** button; each added entry shown as a removable chip/tag |
 | FR-041 | **Remarks** — free text input; no character limit |
-| FR-042 | On clicking **Save Draft**: the system shall generate a `.doc` file from the selected template pre-filled with all form data; save it to `IODMS/Drafts/{Year}/{FolderID}/fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc`; create a record in `draft_files`; *(template population logic to be configured later — for now the file is created with placeholder tags)* |
+| FR-042 | On clicking **Save Draft**: the system shall generate a `.docx` file using `python-docx` from the selected template pre-filled with all form data; save it to `IODMS/Drafts/{Year}/{FolderID}/fax-{UserID}-{YYYYMMDD}-{HHMMSS}.docx`; create a record in `draft_files`. Note: We NO LONGER use `.doc` or `.rtf` formats for templates due to 'Unreadable Content' corruption in MS Word. All templates are strictly `.docx`. |
 | FR-043 | Only one draft can be created per form submission; the form resets after successful save |
-| FR-044 | **Modify mode**: if a user opens an existing record from Outward Register for editing, this form opens pre-filled; the **New** button is replaced by a **Modify** button; on save, the existing `outward_register` record is updated in place and the `.doc` file is replaced on disk (no new draft created) |
+| FR-044 | **Modify mode**: if a user opens an existing record from Outward Register for editing, this form opens pre-filled; the **New** button is replaced by a **Modify** button; on save, the existing `outward_register` record is updated in place and the `.docx` file is replaced on disk (no new draft created) |
 | FR-045 | When editing an existing record, if the user modifies any field that matches an existing record, display a confirmation dialog: *"You are about to modify Outward No. [XXX]. Do you want to continue?"* — Yes proceeds, No clears the form |
 
 ---
@@ -320,10 +320,10 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | FR ID | Requirement |
 |---|---|
 | FR-050 | Display a table of all records in `draft_files` with columns: **Outward No.**, **Folder ID**, **Folder Name**, **Date**, **Address To**, **Subject**, **Remarks**, **Prepared By**, **Created On** |
-| FR-051 | Clicking any row reveals two action buttons inline: **Open / Edit in MS Word** and **Dispatch** |
-| FR-052 | **Download–Edit–Re-upload with Pessimistic Locking**: When a user clicks "Edit" on a draft, the system locks the file (`is_locked = true`, `locked_by`, `locked_at` timestamp). The user downloads the file, edits in MS Word, and re-uploads via a dedicated re-upload button. Other users see "Currently being edited by [User Name]" and can only view (read-only). Locks auto-expire after 30 minutes of inactivity. Admin can force-release any lock. |
+| FR-051 | **Online Document Editor**: Clicking any row reveals an action button to open the draft in the React frontend editor. The editor dynamically renders a read-only letterhead context (HAL Logo, Ref No, Date, To Address, Subject) above the Editor.js text body, and a signature context (CC, prepared by) below it. This gives users a perfect WYSIWYG experience matching the MS Word output. The data is passed via a `letterMeta` prop. |
+| FR-052 | **Legacy Draft Upgrade & Lock Management**: Any legacy `.doc` drafts are automatically upgraded to `.docx` when saved in the backend to ensure ZIP compliance. The system locks the file (`is_locked = true`) when being edited to prevent concurrent edits. |
 | FR-053 | Lock release mechanism: provide a manual **"Release Lock"** button visible to Admin at all times; for the editing user, lock is released on next page load after Word is closed *(auto-sync via LAN share)* |
-| FR-054 | **Dispatch**: clicking Dispatch moves the draft to `outward_register`; renames the file from `fax-{UserID}-{YYYYMMDD}-{HHMMSS}.doc` to the next sequential number (e.g. `004.doc`) and moves it to `IODMS/Outward/{Year}/{FolderID}/`; sets `issuing_date` to today; removes record from `draft_files` |
+| FR-054 | **Dispatch**: clicking Dispatch moves the draft to `outward_register`; renames the file from `fax-{UserID}-{YYYYMMDD}-{HHMMSS}.docx` to the next sequential number (e.g. `004.docx`) and moves it to `IODMS/Outward/{Year}/{FolderID}/`; sets `issuing_date` to today; removes record from `draft_files`. Dispatched drafts are renamed to `.docx` in the Outward register, NOT `.doc` anymore. |
 | FR-055 | The **Outward No.** is pre-assigned at the time the user clicks **New** in Compose Outward (i.e. reserved immediately, before saving the draft) to prevent number conflicts. An officer cannot allocate a new Outward number if they already have an existing undispatched draft. |
 | FR-056 | **Discard Draft**: soft-deletes the draft record; flags it in `pending_deletions` for Admin approval; draft file on disk is not deleted until Admin approves; draft is hidden from the table immediately after flagging |
 | FR-057 | All users can see all drafts (no per-user filtering) |
@@ -498,7 +498,7 @@ All dropdown/admin-editable data lives in the database — never hard-coded.
 | EIR-001 | The system's frontend shall interface with client machines exclusively through Chromium-based web browsers; no non-Chromium browser support is required |
 | EIR-002 | The system shall not make any live internet calls during operation; all data exchange with the development/build environment shall occur via offline removable storage (USB) |
 | EIR-003 | The shared IODMS folder shall be accessible from all client machines via a LAN network share; for the current development/standalone phase, it shall be a local folder path configurable by Admin |
-| EIR-004 | MS Word is the primary document editor. Users download `.doc`/`.docx` files via the system, edit in their locally installed MS Word, and re-upload the edited file through the application's re-upload interface. No in-browser document editing is provided; the system provides in-browser document viewing only. |
+| EIR-004 | The React frontend online editor is now the primary tool for drafting and editing, offering a WYSIWYG letterhead view. Documents can still be viewed in-browser via the `docx-preview` library. Legacy MS Word fallback is available, but editing occurs primarily in the browser. |
 | EIR-005 | DBeaver shall be pre-installed on the server machine; the Admin Panel provides a launch button only — no embedded database UI is built into the application |
 | EIR-006 | Scanner integration is out of scope for the current phase; file upload is via manual browse/drag-drop only |
 

@@ -285,6 +285,17 @@ export default function ComposeOutwardPage() {
     }
   };
 
+  // Sync folder name if folderId changes from prefill/draft loading
+  useEffect(() => {
+    if (folderId && folderTypes.length > 0) {
+      const found = folderTypes.find(f => f.folder_id === folderId);
+      if (found && found.folder_name !== folderName) {
+        setFolderName(found.folder_name);
+      }
+    }
+  }, [folderId, folderTypes]);
+
+
   const handleDocumentDateChange = (value) => {
     const today = todayIsoDate();
     if (!value) {

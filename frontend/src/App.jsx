@@ -64,7 +64,6 @@ import LoginPage from './pages/LoginPage.jsx';
 import AuditorView from './pages/AuditorView.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ComposeOutwardPage from './pages/ComposeOutwardPage.jsx';
-import DraftEditorPage from './pages/DraftEditorPage.jsx';
 import DraftsDispatchPage from './pages/DraftsDispatchPage.jsx';
 import LogInwardPage from './pages/LogInwardPage.jsx';
 import InwardRegisterPage from './pages/InwardRegisterPage.jsx';
@@ -447,7 +446,7 @@ function AppContent() {
           <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
           <Route path="/compose-outward" element={<RequireAuth><ComposeOutwardPage /></RequireAuth>} />
           <Route path="/compose-outward/modify/:folder_id/:year/:outward_no" element={<RequireAuth><ComposeOutwardPage /></RequireAuth>} />
-          <Route path="/draft-editor/:draft_id" element={<RequireAuth><DraftEditorPage /></RequireAuth>} />
+          <Route path="/compose-outward/draft/:draft_id" element={<RequireAuth><ComposeOutwardPage /></RequireAuth>} />
           <Route path="/drafts" element={<RequireAuth><DraftsDispatchPage /></RequireAuth>} />
           <Route path="/log-inward" element={<RequireAuth><LogInwardPage /></RequireAuth>} />
           <Route path="/log-inward/modify/:folder_id/:year/:inward_no" element={<RequireAuth><LogInwardPage /></RequireAuth>} />
