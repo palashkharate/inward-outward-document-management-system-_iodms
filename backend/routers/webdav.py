@@ -7,6 +7,7 @@ from database import get_db, get_iodms_root_path
 
 router = APIRouter()
 
+# FR-052: Map WebDAV URL path back to database draft
 def get_draft_from_path(db: Session, full_path: str):
     """Utility to map a URL path like /drafts/123/filename.docx back to the database draft."""
     parts = full_path.strip("/").split("/")
@@ -19,10 +20,12 @@ def get_draft_from_path(db: Session, full_path: str):
             return None
     return None
 
+# FR-052: Resolve draft document disk path cleanly across Windows and Linux
 def get_file_path_from_draft(draft: models.DraftFile) -> str:
     root = get_iodms_root_path()
-    return os.path.join(root, draft.file_path).replace("/", "\\")
+    return os.path.normpath(os.path.join(root, draft.file_path.lstrip("/\\")))
 
+# FR-052: WebDAV endpoint for seamless Microsoft Word editing
 @router.api_route("/{full_path:path}", methods=["OPTIONS", "PROPFIND", "LOCK", "UNLOCK", "GET", "PUT", "HEAD"])
 async def webdav_handler(request: Request, full_path: str, db: Session = Depends(get_db)):
     """

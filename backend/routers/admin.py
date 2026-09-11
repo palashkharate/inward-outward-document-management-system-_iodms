@@ -451,6 +451,10 @@ def action_pending_deletion(id: int, payload: ApprovalAction, db: Session = Depe
                     trash_entry.original_file_path = item.attachment_path
                     rel_trash, _ = move_to_trash(get_iodms_root_path(), item.attachment_path)
                     trash_entry.trash_file_path = rel_trash
+                if item.attachment_paths:
+                    for p in item.attachment_paths:
+                        if p != item.attachment_path:
+                            move_to_trash(get_iodms_root_path(), p)
                 db.add(trash_entry)
                 
                 # FR-084: Keep record to ensure number is lost
@@ -473,6 +477,10 @@ def action_pending_deletion(id: int, payload: ApprovalAction, db: Session = Depe
                     trash_entry.original_file_path = item.document_path
                     rel_trash, _ = move_to_trash(get_iodms_root_path(), item.document_path)
                     trash_entry.trash_file_path = rel_trash
+                if item.attachment_paths:
+                    for p in item.attachment_paths:
+                        if p != item.document_path:
+                            move_to_trash(get_iodms_root_path(), p)
                 db.add(trash_entry)
                 
                 # FR-095: Keep record to ensure number is lost
@@ -488,6 +496,10 @@ def action_pending_deletion(id: int, payload: ApprovalAction, db: Session = Depe
                     trash_entry.original_file_path = item.file_path
                     rel_trash, _ = move_to_trash(get_iodms_root_path(), item.file_path)
                     trash_entry.trash_file_path = rel_trash
+                if item.attachment_paths:
+                    for p in item.attachment_paths:
+                        if p != item.file_path:
+                            move_to_trash(get_iodms_root_path(), p)
                 db.add(trash_entry)
                 db.delete(item)
 

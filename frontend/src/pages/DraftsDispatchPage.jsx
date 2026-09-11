@@ -579,7 +579,7 @@ export default function DraftsDispatchPage() {
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
               <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
                 Select File
-                <input type="file" hidden accept=".doc,.docx,.pdf,.ppt,.pptx,.xls,.xlsx" onChange={(e) => setReuploadFile(e.target.files[0])} />
+                <input type="file" hidden accept=".doc,.docx,.pdf,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={(e) => setReuploadFile(e.target.files[0])} />
               </Button>
               {reuploadFile && <Typography variant="body2">{reuploadFile.name}</Typography>}
             </Box>

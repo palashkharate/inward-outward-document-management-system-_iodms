@@ -32,11 +32,10 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy backend requirements and install them
-COPY backend/requirements.txt ./backend/
-RUN pip install --no-cache-dir -r backend/requirements.txt
-
-# Copy the backend source code
+    COPY backend/requirements.txt ./backend/
+    RUN pip install --default-timeout=1000 --retries=15 --no-cache-dir -r backend/requirements.txt
+    
+    # Copy the backend source code
 COPY backend/ ./backend/
 
 # Copy the compiled React frontend from Stage 1 into the correct location

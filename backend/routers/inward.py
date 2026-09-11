@@ -3,6 +3,7 @@ import os
 import shutil
 import json
 import uuid
+import mimetypes
 from .link_utils import sync_bidirectional_links
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -526,6 +527,8 @@ def get_inward_register(
             "document_type": r.document_type,
             "status": r.status,
             "attachment_path": r.attachment_path,
+            "attachment_paths": r.attachment_paths or ([r.attachment_path] if r.attachment_path else []),
+            "linked_documents": r.linked_documents or [],
             "is_pending_deletion": key in pending_keys
         })
 
@@ -543,18 +546,42 @@ def view_file(path: str):
     """Exposes a file download/stream endpoint for attachments.
     
     Implements:
-    - FR-083: Opens/views the attached file directly from its stored path.
+    - FR-083: Opens/views the attached file (PDF, image, doc) directly in browser.
     """
     root_dir = os.path.abspath(get_iodms_root_path())
-    full_path = os.path.abspath(os.path.join(root_dir, path))
+    full_path = os.path.abspath(os.path.join(root_dir, path.lstrip("/\\")))
     
     # Security Check: Prevent path traversal
-    if not full_path.startswith(root_dir):
+    if os.path.commonpath([root_dir, full_path]) != root_dir:
         raise HTTPException(status_code=403, detail="Invalid path access denied")
         
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="File not found on server")
-    return FileResponse(full_path)
+
+    ext = os.path.splitext(full_path)[1].lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".doc": "application/msword",
+        ".rtf": "application/rtf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".svg": "image/svg+xml",
+        ".tif": "image/tiff",
+        ".tiff": "image/tiff",
+        ".txt": "text/plain",
+    }
+    media_type = media_types.get(ext) or mimetypes.guess_type(full_path)[0] or "application/octet-stream"
+    return FileResponse(
+        full_path,
+        media_type=media_type,
+        content_disposition_type="inline",
+        filename=os.path.basename(full_path)
+    )
 
 
 # FR-084: Request deletion of Inward record

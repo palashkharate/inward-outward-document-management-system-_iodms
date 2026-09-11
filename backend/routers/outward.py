@@ -3,6 +3,7 @@ import os
 import shutil
 import json
 import uuid
+import mimetypes
 from urllib.parse import quote
 from .link_utils import sync_bidirectional_links
 from typing import Optional, List
@@ -212,6 +213,7 @@ def build_template_replacements(data: dict, db: Session) -> dict:
     }
 
 
+# FR-143: Replace placeholders in Word .docx files (handles split runs)
 def replace_docx_placeholders(filepath: str, replacements: dict):
     from docx import Document
 
@@ -226,8 +228,18 @@ def replace_docx_placeholders(filepath: str, replacements: dict):
         for key, value in replacements.items():
             token = "{{" + key + "}}"
             if token in paragraph.text:
+                replaced_in_run = False
                 for run in paragraph.runs:
-                    run.text = run.text.replace(token, str(value or ""))
+                    if token in run.text:
+                        run.text = run.text.replace(token, str(value or ""))
+                        replaced_in_run = True
+                # If Word split the placeholder across multiple runs (common in MS Word),
+                # replace at paragraph text level on the first run and clear the rest
+                if not replaced_in_run and paragraph.runs:
+                    new_text = paragraph.text.replace(token, str(value or ""))
+                    paragraph.runs[0].text = new_text
+                    for r in paragraph.runs[1:]:
+                        r.text = ""
     doc.save(filepath)
 
 
@@ -854,7 +866,7 @@ def modify_outward(
 
 # FR-050: Get Drafts list
 @router.get("/drafts")
-def get_drafts(db: Session = Depends(get_db)):
+def get_drafts(request: Request, db: Session = Depends(get_db)):
     """Retrieves all drafts waiting to be dispatched.
     
     Implements:
@@ -1304,12 +1316,16 @@ def get_outward_register(
             "folder_name": folder_name,
             "year": r.year,
             "issuing_date": r.issuing_date.isoformat(),
+            "address_to": r.address_to or [],
+            "cc_to": r.cc_to or [],
             "address_to_names": address_to_names,
             "cc_to_names": cc_to_names,
             "subject": r.subject,
             "remarks": r.remarks,
             "prepared_by": r.prepared_by,
             "document_path": r.document_path,
+            "attachment_paths": r.attachment_paths or ([r.document_path] if r.document_path else []),
+            "linked_documents": r.linked_documents or [],
             "template_type": r.template_type,
             "is_pending_deletion": key in pending_keys
         })
@@ -1325,10 +1341,10 @@ def get_outward_register(
 # FR-094: View Document
 @router.get("/view-document")
 def view_document(path: str, db: Session = Depends(get_db)):
-    """Serves the document file directly (PDF or DOC/DOCX) for in-browser viewer.
+    """Serves the document file directly (PDF, Image, or Word doc) for in-browser viewer.
     
     Implements:
-    - FR-094: In-Browser Document View
+    - FR-094: In-Browser Document View with inline streaming for PDF and images (PNG, JPG, etc.).
     """
     root_path = os.path.abspath(get_iodms_root_path())
     full_path = os.path.abspath(os.path.join(root_path, path.lstrip("/\\")))
@@ -1345,9 +1361,25 @@ def view_document(path: str, db: Session = Depends(get_db)):
         ".pdf": "application/pdf",
         ".doc": "application/msword",
         ".rtf": "application/rtf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".svg": "image/svg+xml",
+        ".tif": "image/tiff",
+        ".tiff": "image/tiff",
+        ".txt": "text/plain",
     }
-    return FileResponse(full_path, media_type=media_types.get(ext, "application/octet-stream"), filename=os.path.basename(full_path))
+    media_type = media_types.get(ext) or mimetypes.guess_type(full_path)[0] or "application/octet-stream"
+    return FileResponse(
+        full_path,
+        media_type=media_type,
+        content_disposition_type="inline",
+        filename=os.path.basename(full_path)
+    )
 
 
 # FR-170b: Upload Signed Copy / Additional Attachments to Dispatched Outward Record
